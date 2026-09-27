@@ -179,7 +179,7 @@ void App::RebuildMenu() {
     AppendMenuW(video, MF_STRING | (renderer_.OverlayEnabled() ? MF_CHECKED : 0), kToggleOverlay,
                 L"Debug overlay\tO");
     AppendMenuW(video, MF_STRING | (renderer_.DownscaleAa() ? MF_CHECKED : 0),
-                kToggleDownscaleAa, L"Window downscale AA\tA");
+                kToggleDownscaleAa, L"Sharp bicubic window scaling\tA");
 
     HMENU chroma = CreatePopupMenu();
     for (int i = 0; i < 6; ++i) {
@@ -406,7 +406,7 @@ std::wstring App::OverlayText(const CapturedFrame* frame) const {
         << L"   edge threshold " << renderer_.EdgeThreshold()
         << (renderer_.SplitScreen() ? L"   SPLIT" : L"")
         << L"\nVSync " << (renderer_.Vsync() ? L"On" : L"Off")
-        << L"   Window AA " << (renderer_.DownscaleAa() ? L"On" : L"Off")
+        << L"   Sharp scale " << (renderer_.DownscaleAa() ? L"On" : L"Off")
         << L"   Tearing " << (renderer_.TearingSupported() ? L"available" : L"unavailable")
         << L"   Audio " << (audioStats.running ? L"48 kHz" : L"off")
         << L"   audio queue " << audioStats.bufferedFrames << L" frames"

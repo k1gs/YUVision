@@ -63,9 +63,12 @@ private:
     ComPtr<ID3D11RenderTargetView> renderTarget_;
     ComPtr<ID3D11Texture2D> sourceTexture_;
     ComPtr<ID3D11ShaderResourceView> sourceView_;
+    ComPtr<ID3D11Texture2D> convertedTexture_;
+    ComPtr<ID3D11RenderTargetView> convertedTarget_;
+    ComPtr<ID3D11ShaderResourceView> convertedView_;
     ComPtr<ID3D11VertexShader> vertexShader_;
-    ComPtr<ID3D11PixelShader> pixelShader_;
-    ComPtr<ID3D11SamplerState> sampler_;
+    ComPtr<ID3D11PixelShader> conversionPixelShader_;
+    ComPtr<ID3D11PixelShader> scalingPixelShader_;
     ComPtr<ID3D11Buffer> constants_;
 
     ComPtr<ID2D1Factory1> d2dFactory_;

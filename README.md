@@ -11,7 +11,7 @@ only the newest frame, so slow rendering drops old frames instead of increasing 
 - Native Media Foundation capture with hidden format conversion disabled
 - Original luma-guided, bilinear, bicubic, conservative, and adaptive chroma modes
 - Manual chroma offset and Limited / Full range selection
-- GPU anti-aliased window downscaling; exact single-sample path at 1:1
+- Native-resolution GPU conversion followed by sharp bicubic window scaling
 - Borderless fullscreen, VSync toggle, and tearing when supported
 - Low-latency 48 kHz WASAPI audio
 - Capture, render, drop, queue, timestamp, format, and audio diagnostics
@@ -31,7 +31,7 @@ The executable is `build\Release\YUVision.exe`. No third-party runtime libraries
 
 - `F11` or `Alt+Enter`: borderless fullscreen
 - `V`: VSync
-- `A`: window downscale anti-aliasing
+- `A`: sharp bicubic window scaling
 - `1` to `6`: select a chroma reconstruction mode
 - `Left` / `Right`: adjust chroma offset (`Shift` uses larger steps)
 - `Down` / `Up`: adjust edge threshold (`Shift` uses larger steps)

@@ -8,6 +8,7 @@ namespace {
 
 constexpr char kShader[] = R"hlsl(
 Texture2D<float4> packedYuy2 : register(t0);
+Texture2D<float4> convertedRgb : register(t1);
 
 cbuffer Settings : register(b0) {
     float2 sourceSize;
@@ -168,7 +169,49 @@ float3 SampleSource(float2 pixel, int mode) {
     return saturate(ToRgb(y, uv));
 }
 
-float4 PSMain(VsOut input) : SV_Target {
+float4 PSConvert(VsOut input) : SV_Target {
+    float2 pixel = input.uv * sourceSize - 0.5;
+    int activeMode = (splitScreen != 0 && input.uv.x < 0.5) ? 1 : chromaMode;
+    return float4(SampleSource(pixel, activeMode), 1.0);
+}
+
+float4 CatmullRomWeights(float f) {
+    float f2 = f * f;
+    float f3 = f2 * f;
+    return float4(-0.5*f + f2 - 0.5*f3,
+                  1.0 - 2.5*f2 + 1.5*f3,
+                  0.5*f + 2.0*f2 - 1.5*f3,
+                  -0.5*f2 + 0.5*f3);
+}
+
+float3 SampleConverted(int2 pixel) {
+    pixel = clamp(pixel, int2(0, 0), int2(sourceSize) - 1);
+    return convertedRgb.Load(int3(pixel, 0)).rgb;
+}
+
+float3 SampleConvertedBicubic(float2 pixel) {
+    int2 base = int2(floor(pixel));
+    float4 wx = CatmullRomWeights(frac(pixel.x));
+    float4 wy = CatmullRomWeights(frac(pixel.y));
+    float3 result = 0;
+    [unroll] for (int j = 0; j < 4; ++j) {
+        [unroll] for (int i = 0; i < 4; ++i) {
+            result += SampleConverted(base + int2(i - 1, j - 1)) * wx[i] * wy[j];
+        }
+    }
+
+    // Catmull-Rom is intentionally sharp, but clamp its overshoot to the central
+    // 2x2 neighbourhood so saturated UI edges do not acquire ringing halos.
+    float3 lo = min(min(SampleConverted(base), SampleConverted(base + int2(1, 0))),
+                    min(SampleConverted(base + int2(0, 1)),
+                        SampleConverted(base + int2(1, 1))));
+    float3 hi = max(max(SampleConverted(base), SampleConverted(base + int2(1, 0))),
+                    max(SampleConverted(base + int2(0, 1)),
+                        SampleConverted(base + int2(1, 1))));
+    return clamp(result, lo, hi);
+}
+
+float4 PSScale(VsOut input) : SV_Target {
     float sourceAspect = sourceSize.x / sourceSize.y;
     float outputAspect = outputSize.x / outputSize.y;
     float2 scale = 1.0;
@@ -178,22 +221,13 @@ float4 PSMain(VsOut input) : SV_Target {
     if (any(centered < 0.0) || any(centered > 1.0)) return float4(0, 0, 0, 1);
 
     float2 pixel = centered * sourceSize - 0.5;
-    int activeMode = (splitScreen != 0 && input.uv.x < 0.5) ? 1 : chromaMode;
     float2 contentOutputSize = max(outputSize * scale, 1.0);
     float2 sourcePerOutput = sourceSize / contentOutputSize;
     float3 rgb;
     if (downscaleAa != 0 && any(sourcePerOutput > 1.001)) {
-        // A four-point box approximation prevents fractional downscales from repeatedly
-        // selecting and skipping source rows/columns. Chroma is reconstructed at every
-        // tap, so no intermediate RGB texture or additional frame queue is required.
-        float2 radius = 0.25 * max(sourcePerOutput, 1.0);
-        rgb = 0.25 * (
-            SampleSource(pixel + float2(-radius.x, -radius.y), activeMode) +
-            SampleSource(pixel + float2( radius.x, -radius.y), activeMode) +
-            SampleSource(pixel + float2(-radius.x,  radius.y), activeMode) +
-            SampleSource(pixel + float2( radius.x,  radius.y), activeMode));
+        rgb = SampleConvertedBicubic(pixel);
     } else {
-        rgb = SampleSource(pixel, activeMode);
+        rgb = SampleConverted(int2(floor(pixel + 0.5)));
     }
     if (splitScreen != 0 && abs(input.uv.x - 0.5) < 1.25 / outputSize.x) {
         rgb = float3(0.85, 0.85, 0.85);
@@ -333,11 +367,18 @@ void Renderer::Initialize(HWND window) {
 
 void Renderer::CreatePipeline() {
     const auto vs = Compile("VSMain", "vs_5_0");
-    const auto ps = Compile("PSMain", "ps_5_0");
+    const auto conversionPs = Compile("PSConvert", "ps_5_0");
+    const auto scalingPs = Compile("PSScale", "ps_5_0");
     CheckHr(device_->CreateVertexShader(vs->GetBufferPointer(), vs->GetBufferSize(), nullptr,
                                         &vertexShader_), "CreateVertexShader");
-    CheckHr(device_->CreatePixelShader(ps->GetBufferPointer(), ps->GetBufferSize(), nullptr,
-                                       &pixelShader_), "CreatePixelShader");
+    CheckHr(device_->CreatePixelShader(conversionPs->GetBufferPointer(),
+                                       conversionPs->GetBufferSize(), nullptr,
+                                       &conversionPixelShader_),
+            "CreatePixelShader(conversion)");
+    CheckHr(device_->CreatePixelShader(scalingPs->GetBufferPointer(),
+                                       scalingPs->GetBufferSize(), nullptr,
+                                       &scalingPixelShader_),
+            "CreatePixelShader(scaling)");
 
     D3D11_BUFFER_DESC cb{};
     cb.ByteWidth = sizeof(ShaderSettings);
@@ -391,6 +432,9 @@ void Renderer::Resize(UINT width, UINT height) {
 bool Renderer::Upload(const CapturedFrame& frame) {
     if (frame.width == 0 || frame.height == 0 || frame.bytes.empty()) return false;
     if (!sourceTexture_ || sourceWidth_ != frame.width || sourceHeight_ != frame.height) {
+        convertedTarget_.Reset();
+        convertedView_.Reset();
+        convertedTexture_.Reset();
         sourceView_.Reset();
         sourceTexture_.Reset();
         D3D11_TEXTURE2D_DESC desc{};
@@ -407,6 +451,21 @@ bool Renderer::Upload(const CapturedFrame& frame) {
                 "CreateTexture2D(YUY2 packed)");
         CheckHr(device_->CreateShaderResourceView(sourceTexture_.Get(), nullptr, &sourceView_),
                 "CreateShaderResourceView(YUY2 packed)");
+
+        desc.Width = frame.width;
+        desc.Height = frame.height;
+        desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        desc.Usage = D3D11_USAGE_DEFAULT;
+        desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+        desc.CPUAccessFlags = 0;
+        CheckHr(device_->CreateTexture2D(&desc, nullptr, &convertedTexture_),
+                "CreateTexture2D(converted RGB)");
+        CheckHr(device_->CreateRenderTargetView(convertedTexture_.Get(), nullptr,
+                                                 &convertedTarget_),
+                "CreateRenderTargetView(converted RGB)");
+        CheckHr(device_->CreateShaderResourceView(convertedTexture_.Get(), nullptr,
+                                                  &convertedView_),
+                "CreateShaderResourceView(converted RGB)");
         sourceWidth_ = frame.width;
         sourceHeight_ = frame.height;
     }
@@ -425,14 +484,14 @@ bool Renderer::Upload(const CapturedFrame& frame) {
 HRESULT Renderer::Render(const std::wstring& overlay) {
     if (!renderTarget_) return S_FALSE;
 
-    const D3D11_VIEWPORT viewport{0, 0, static_cast<float>(outputWidth_),
-                                  static_cast<float>(outputHeight_), 0, 1};
-    context_->RSSetViewports(1, &viewport);
-    ID3D11RenderTargetView* target = renderTarget_.Get();
-    context_->OMSetRenderTargets(1, &target, nullptr);
+    const D3D11_VIEWPORT outputViewport{0, 0, static_cast<float>(outputWidth_),
+                                        static_cast<float>(outputHeight_), 0, 1};
+    ID3D11RenderTargetView* outputTarget = renderTarget_.Get();
+    context_->RSSetViewports(1, &outputViewport);
+    context_->OMSetRenderTargets(1, &outputTarget, nullptr);
     const float black[4]{0, 0, 0, 1};
     context_->ClearRenderTargetView(renderTarget_.Get(), black);
-    if (sourceView_) {
+    if (sourceView_ && convertedTarget_ && convertedView_) {
         D3D11_MAPPED_SUBRESOURCE mapped{};
         CheckHr(context_->Map(constants_.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped),
                 "Map(constants)");
@@ -453,12 +512,30 @@ HRESULT Renderer::Render(const std::wstring& overlay) {
         context_->IASetInputLayout(nullptr);
         context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         context_->VSSetShader(vertexShader_.Get(), nullptr, 0);
-        context_->PSSetShader(pixelShader_.Get(), nullptr, 0);
-        ID3D11ShaderResourceView* view = sourceView_.Get();
-        context_->PSSetShaderResources(0, 1, &view);
         ID3D11Buffer* cb = constants_.Get();
         context_->PSSetConstantBuffers(0, 1, &cb);
+
+        // Pass 1: reconstruct chroma and convert YUY2 at the source's native grid.
+        ID3D11ShaderResourceView* nullViews[2]{};
+        context_->PSSetShaderResources(0, 2, nullViews);
+        const D3D11_VIEWPORT sourceViewport{0, 0, static_cast<float>(sourceWidth_),
+                                            static_cast<float>(sourceHeight_), 0, 1};
+        context_->RSSetViewports(1, &sourceViewport);
+        ID3D11RenderTargetView* conversionTarget = convertedTarget_.Get();
+        context_->OMSetRenderTargets(1, &conversionTarget, nullptr);
+        context_->PSSetShader(conversionPixelShader_.Get(), nullptr, 0);
+        ID3D11ShaderResourceView* packedView = sourceView_.Get();
+        context_->PSSetShaderResources(0, 1, &packedView);
         context_->Draw(3, 0);
+
+        // Pass 2: scale the completed RGB frame to the window in the same GPU frame.
+        context_->RSSetViewports(1, &outputViewport);
+        context_->OMSetRenderTargets(1, &outputTarget, nullptr);
+        context_->PSSetShader(scalingPixelShader_.Get(), nullptr, 0);
+        ID3D11ShaderResourceView* rgbView = convertedView_.Get();
+        context_->PSSetShaderResources(1, 1, &rgbView);
+        context_->Draw(3, 0);
+        context_->PSSetShaderResources(0, 2, nullViews);
     }
 
     if (overlayEnabled_) DrawOverlay(overlay);
