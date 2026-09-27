@@ -52,6 +52,9 @@ Use `--audio-in <ALSA_PCM>`, `--audio-out <ALSA_PCM>`, or `--no-audio` when auto
 audio selection is not suitable. A CMake build is also supported when CMake and pkg-config are
 installed.
 
+See the [Linux build and run guide](docs/LINUX.md) for Fedora and Arch dependencies, capture-card
+discovery, audio setup, controls, and troubleshooting.
+
 The Linux MVP uses a compact keyboard-driven UI. Its V4L2 path requests native 1920x1080 YUYV at
 60 fps, drains all ready buffers on each iteration, and displays only the newest frame. SDL3 and
 OpenGL 3.3 run the same reconstruction modes as the Windows D3D11 shaders. ALSA capture and
