@@ -139,15 +139,22 @@ std::vector<VideoDevice> VideoCapture::Enumerate() {
 
 HRESULT VideoCapture::Start(const VideoDevice& device, const VideoMode& mode) {
     Stop();
+    {
+        std::scoped_lock lock(errorMutex_);
+        lastError_.clear();
+    }
     try {
         source_ = ActivateVideoSource(device.symbolicLink);
+        DiagnosticLog(L"Capture source activated");
         auto attrs = ReaderAttributes(this);
         CheckHr(MFCreateSourceReaderFromMediaSource(source_.Get(), attrs.Get(), &reader_),
                 "MFCreateSourceReaderFromMediaSource");
+        DiagnosticLog(L"Async Source Reader created");
         CheckHr(reader_->SetStreamSelection(kAllStreams, FALSE),
                 "SetStreamSelection(all off)");
         CheckHr(reader_->SetStreamSelection(kVideoStream, TRUE),
                 "SetStreamSelection(video on)");
+        DiagnosticLog(L"Video stream selected");
 
         ComPtr<IMFMediaType> nativeType;
         CheckHr(reader_->GetNativeMediaType(kVideoStream,
@@ -167,6 +174,7 @@ HRESULT VideoCapture::Start(const VideoDevice& device, const VideoMode& mode) {
         CheckHr(reader_->SetCurrentMediaType(kVideoStream,
                                              nullptr, nativeType.Get()),
                 "SetCurrentMediaType(native)");
+        DiagnosticLog(L"Native YUY2 media type selected");
 
         mode_ = mode;
         received_ = 0;
@@ -180,20 +188,24 @@ HRESULT VideoCapture::Start(const VideoDevice& device, const VideoMode& mode) {
             pending_ = {};
             hasPending_ = false;
         }
-        {
-            std::scoped_lock lock(errorMutex_);
-            lastError_.clear();
-        }
         running_ = true;
+        DiagnosticLog(L"Submitting initial asynchronous ReadSample");
         const HRESULT hr = reader_->ReadSample(kVideoStream, 0,
                                                nullptr, nullptr, nullptr, nullptr);
         if (FAILED(hr)) {
             running_ = false;
             SetError(hr, L"Initial ReadSample");
         }
+        if (SUCCEEDED(hr)) DiagnosticLog(L"Initial ReadSample accepted");
         return hr;
-    } catch (const std::exception&) {
+    } catch (const std::exception& error) {
+        const std::wstring detail(error.what(), error.what() + strlen(error.what()));
         Stop();
+        {
+            std::scoped_lock lock(errorMutex_);
+            lastError_ = L"Capture setup: " + detail;
+        }
+        DiagnosticLog(lastError_);
         return E_FAIL;
     }
 }
@@ -255,6 +267,11 @@ ULONG VideoCapture::Release() {
 HRESULT VideoCapture::OnReadSample(HRESULT status, DWORD, DWORD streamFlags,
                                    LONGLONG timestamp, IMFSample* sample) {
     if (!running_) return S_OK;
+    if (received_.load() == 0) {
+        DiagnosticLog(L"First OnReadSample callback: status=" + std::to_wstring(status) +
+                      L", flags=" + std::to_wstring(streamFlags) +
+                      L", sample=" + (sample ? std::wstring(L"yes") : std::wstring(L"no")));
+    }
     if (FAILED(status)) {
         SetError(status, L"ReadSample callback");
         running_ = false;
@@ -281,6 +298,8 @@ HRESULT VideoCapture::OnReadSample(HRESULT status, DWORD, DWORD streamFlags,
 }
 
 HRESULT VideoCapture::CopySample(IMFSample* sample, LONGLONG timestamp) {
+    const bool traceFirst = received_.load() == 0;
+    if (traceFirst) DiagnosticLog(L"First sample: entering CopySample");
     const DWORD rowBytes = mode_.width * 2;
     CapturedFrame frame;
     frame.width = mode_.width;
@@ -308,19 +327,24 @@ HRESULT VideoCapture::CopySample(IMFSample* sample, LONGLONG timestamp) {
     ComPtr<IMFMediaBuffer> buffer;
     HRESULT hr = sample->ConvertToContiguousBuffer(&buffer);
     if (FAILED(hr)) return hr;
+    if (traceFirst) DiagnosticLog(L"First sample: contiguous buffer acquired");
 
     ComPtr<IMF2DBuffer> buffer2d;
     if (SUCCEEDED(buffer.As(&buffer2d))) {
+        if (traceFirst) DiagnosticLog(L"First sample: IMF2DBuffer path");
         BYTE* scanline0 = nullptr;
         LONG pitch = 0;
         hr = buffer2d->Lock2D(&scanline0, &pitch);
         if (FAILED(hr)) return hr;
+        if (traceFirst) DiagnosticLog(L"First sample: Lock2D pitch=" + std::to_wstring(pitch));
         for (UINT32 y = 0; y < mode_.height; ++y) {
             memcpy(frame.bytes.data() + static_cast<size_t>(y) * rowBytes,
                    scanline0 + static_cast<ptrdiff_t>(y) * pitch, rowBytes);
         }
         buffer2d->Unlock2D();
+        if (traceFirst) DiagnosticLog(L"First sample: 2D rows copied");
     } else {
+        if (traceFirst) DiagnosticLog(L"First sample: linear IMFMediaBuffer path");
         BYTE* data = nullptr;
         DWORD maxLength = 0, currentLength = 0;
         hr = buffer->Lock(&data, &maxLength, &currentLength);
@@ -338,6 +362,7 @@ HRESULT VideoCapture::CopySample(IMFSample* sample, LONGLONG timestamp) {
                    first + static_cast<ptrdiff_t>(y) * stride, rowBytes);
         }
         buffer->Unlock();
+        if (traceFirst) DiagnosticLog(L"First sample: linear rows copied");
     }
 
     {
@@ -350,6 +375,9 @@ HRESULT VideoCapture::CopySample(IMFSample* sample, LONGLONG timestamp) {
         hasPending_ = true;
     }
     SetEvent(frameEvent_);
+    if (frame.serial == 1) {
+        DiagnosticLog(L"First YUY2 frame copied successfully");
+    }
 
     ++fpsWindowFrames_;
     const int64_t now = QpcNow();
@@ -367,4 +395,5 @@ void VideoCapture::SetError(HRESULT hr, const wchar_t* context) {
     lastError_ = context;
     lastError_ += L": ";
     lastError_ += HrText(hr);
+    DiagnosticLog(lastError_);
 }

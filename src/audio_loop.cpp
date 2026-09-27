@@ -132,6 +132,7 @@ HRESULT AudioLoop::Start(const AudioEndpoint& input, const AudioEndpoint& output
         }
         running_ = true;
         thread_ = std::thread(&AudioLoop::ThreadMain, this);
+        DiagnosticLog(L"Audio thread created: " + input.name + L" -> " + output.name);
         return S_OK;
     } catch (const std::exception& exception) {
         {
@@ -181,6 +182,8 @@ void AudioLoop::ThreadMain() {
     if (FAILED(hr)) {
         SetError(hr, L"Start audio stream");
         running_ = false;
+    } else {
+        DiagnosticLog(L"WASAPI capture and render streams started");
     }
     HANDLE events[]{stopEvent_, captureEvent_, renderEvent_};
     while (running_) {

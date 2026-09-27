@@ -31,6 +31,10 @@ The selected video mode is always a native media type reported by the capture de
 does not ask Media Foundation to insert a converter. YUY2 is implemented by the MVP; other
 enumerated subtypes are shown for diagnostics but disabled until their GPU upload path exists.
 
+If capture cannot produce a frame, the viewer shows the exact startup/callback state instead of a
+blank client area. The same information and the native media-type list are written to
+`%TEMP%\331Viewer-YUY2Fix.log`.
+
 ## Known MVP boundaries
 
 - UVC YUY2 normally arrives in system memory, so one CPU-to-GPU upload per displayed frame is

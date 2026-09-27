@@ -58,7 +58,7 @@ private:
     void HandleCommand(UINT command);
     void HandleKey(UINT key, bool shift);
     void ToggleFullscreen();
-    std::wstring OverlayText(const CapturedFrame& frame) const;
+    std::wstring OverlayText(const CapturedFrame* frame) const;
     static size_t FindBestMode(const VideoDevice& device);
 
     HWND window_ = nullptr;
@@ -78,6 +78,7 @@ private:
     WINDOWPLACEMENT windowPlacement_{sizeof(WINDOWPLACEMENT)};
     DWORD windowStyle_ = 0;
     std::wstring currentFormat_ = L"No signal";
+    std::wstring captureState_ = L"Starting";
 };
 
 App* gApp = nullptr;
@@ -109,6 +110,14 @@ void App::EnumerateDevices() {
     videoDevices_ = VideoCapture::Enumerate();
     audioInputs_ = AudioLoop::EnumerateCapture();
     audioOutputs_ = AudioLoop::EnumerateRender();
+    DiagnosticLog(L"Video devices: " + std::to_wstring(videoDevices_.size()) +
+                  L", audio inputs: " + std::to_wstring(audioInputs_.size()) +
+                  L", audio outputs: " + std::to_wstring(audioOutputs_.size()));
+    for (const auto& device : videoDevices_) {
+        DiagnosticLog(L"Video device: " + device.name + L" (" +
+                      std::to_wstring(device.modes.size()) + L" native modes)");
+        for (const auto& mode : device.modes) DiagnosticLog(L"  " + mode.Label());
+    }
 
     const std::wstring defaultOutput = DefaultEndpointId(eRender);
     for (size_t i = 0; i < audioOutputs_.size(); ++i) {
@@ -208,10 +217,16 @@ void App::RebuildMenu() {
 }
 
 void App::StartBestVideo() {
-    if (videoDeviceIndex_ >= videoDevices_.size()) return;
+    if (videoDeviceIndex_ >= videoDevices_.size()) {
+        captureState_ = L"No Media Foundation video capture devices found";
+        DiagnosticLog(captureState_);
+        return;
+    }
     const size_t mode = FindBestMode(videoDevices_[videoDeviceIndex_]);
     if (mode == videoDevices_[videoDeviceIndex_].modes.size()) {
         currentFormat_ = L"No native YUY2 mode on selected device";
+        captureState_ = currentFormat_;
+        DiagnosticLog(captureState_);
         return;
     }
     StartVideo(mode);
@@ -222,14 +237,19 @@ void App::StartVideo(size_t modeIndex) {
         modeIndex >= videoDevices_[videoDeviceIndex_].modes.size()) return;
     const auto& mode = videoDevices_[videoDeviceIndex_].modes[modeIndex];
     if (!mode.IsYuy2()) return;
+    captureState_ = L"Opening " + videoDevices_[videoDeviceIndex_].name;
+    DiagnosticLog(captureState_ + L" / " + mode.Label());
     const HRESULT hr = capture_.Start(videoDevices_[videoDeviceIndex_], mode);
     if (FAILED(hr)) {
         currentFormat_ = L"Capture start failed: " + HrText(hr);
+        captureState_ = capture_.LastError().empty() ? currentFormat_ : capture_.LastError();
+        DiagnosticLog(captureState_);
         MessageBoxW(window_, currentFormat_.c_str(), L"331Viewer-YUY2Fix", MB_OK | MB_ICONERROR);
         return;
     }
     videoModeIndex_ = modeIndex;
     currentFormat_ = mode.Label();
+    captureState_ = L"Capture started; waiting for first frame";
     RebuildMenu();
 }
 
@@ -322,26 +342,33 @@ void App::ToggleFullscreen() {
     }
 }
 
-std::wstring App::OverlayText(const CapturedFrame& frame) const {
+std::wstring App::OverlayText(const CapturedFrame* frame) const {
     const auto captureStats = capture_.Stats();
     const auto audioStats = audio_.Stats();
-    const double arrivalAgeMs = QpcSeconds(QpcNow() - frame.arrivalQpc) * 1000.0;
-    const double timestampAgeMs = QpcSeconds(QpcNow() - frame.estimatedCaptureQpc) * 1000.0;
     std::wostringstream out;
     out.setf(std::ios::fixed);
     out.precision(2);
+    if (!frame) out << L"NO VIDEO FRAME\n" << captureState_ << L"\n";
+    const std::wstring captureError = capture_.LastError();
+    if (!captureError.empty()) out << L"Error: " << captureError << L"\n";
     out << L"Capture " << captureStats.fps << L" fps   Render " << renderer_.RenderFps()
         << L" fps   Dropped " << captureStats.dropped << L"   Queue " << captureStats.queueDepth
-        << L"\nFrame arrival age " << std::max(0.0, arrivalAgeMs) << L" ms   Timestamp age "
-        << std::max(0.0, timestampAgeMs) << L" ms"
-        << L"\n" << currentFormat_ << L"   Rec.709 "
+        << L"   Received " << captureStats.received;
+    if (frame) {
+        const double arrivalAgeMs = QpcSeconds(QpcNow() - frame->arrivalQpc) * 1000.0;
+        const double timestampAgeMs = QpcSeconds(QpcNow() - frame->estimatedCaptureQpc) * 1000.0;
+        out << L"\nFrame arrival age " << std::max(0.0, arrivalAgeMs)
+            << L" ms   Timestamp age " << std::max(0.0, timestampAgeMs) << L" ms";
+    }
+    out << L"\n" << currentFormat_ << L"   Rec.709 "
         << (renderer_.LimitedRange() ? L"Limited" : L"Full")
         << L"   " << ChromaModeName(renderer_.GetChromaMode())
         << L"   offset " << renderer_.ChromaOffset() << L" px"
         << L"\nVSync " << (renderer_.Vsync() ? L"On" : L"Off")
         << L"   Tearing " << (renderer_.TearingSupported() ? L"available" : L"unavailable")
         << L"   Audio " << (audioStats.running ? L"48 kHz" : L"off")
-        << L"   audio queue " << audioStats.bufferedFrames << L" frames";
+        << L"   audio queue " << audioStats.bufferedFrames << L" frames"
+        << L"\nLog: " << DiagnosticLogPath();
     return out.str();
 }
 
@@ -376,6 +403,8 @@ LRESULT App::WindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 
 int App::Run(HINSTANCE instance, int show) {
     instance_ = instance;
+    ResetDiagnosticLog();
+    DiagnosticLog(L"331Viewer-YUY2Fix starting");
     SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
     WNDCLASSEXW windowClass{sizeof(WNDCLASSEXW)};
     windowClass.style = CS_HREDRAW | CS_VREDRAW;
@@ -406,6 +435,7 @@ int App::Run(HINSTANCE instance, int show) {
     bool framePending = false;
     bool quit = false;
     CapturedFrame frame;
+    int64_t lastStatusRenderQpc = 0;
     while (!quit) {
         MSG message{};
         while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
@@ -416,21 +446,42 @@ int App::Run(HINSTANCE instance, int show) {
         if (quit) break;
 
         HANDLE handles[]{capture_.FrameEvent(), renderer_.FrameLatencyEvent()};
-        const DWORD wait = MsgWaitForMultipleObjectsEx(2, handles, 1000, QS_ALLINPUT,
+        const DWORD handleCount = framePending ? 2 : 1;
+        const DWORD wait = MsgWaitForMultipleObjectsEx(handleCount, handles,
+                                                       framePending ? 16 : 250, QS_ALLINPUT,
                                                        MWMO_INPUTAVAILABLE);
         if (wait == WAIT_OBJECT_0) framePending = true;
-        const bool swapchainReady = wait == WAIT_OBJECT_0 + 1 ||
-            WaitForSingleObject(renderer_.FrameLatencyEvent(), 0) == WAIT_OBJECT_0;
+        const int64_t now = QpcNow();
+        const bool statusDue = QpcSeconds(now - lastStatusRenderQpc) >= 0.25 &&
+                               (renderer_.SourceWidth() == 0 || !capture_.LastError().empty());
+        const bool swapchainReady = (handleCount == 2 && wait == WAIT_OBJECT_0 + 1) ||
+            ((framePending || statusDue) &&
+             WaitForSingleObject(renderer_.FrameLatencyEvent(), 0) == WAIT_OBJECT_0);
         if (framePending && swapchainReady) {
             if (capture_.TakeLatest(frame)) {
                 framePending = false;
+                captureState_ = L"Streaming";
                 try {
-                    if (renderer_.Upload(frame)) renderer_.Render(OverlayText(frame));
+                    if (renderer_.Upload(frame)) {
+                        const HRESULT presentHr = renderer_.Render(OverlayText(&frame));
+                        if (frame.serial == 1 && SUCCEEDED(presentHr)) {
+                            DiagnosticLog(L"First frame uploaded and presented successfully");
+                        }
+                    }
                 } catch (const std::exception& error) {
                     std::wstring text(error.what(), error.what() + strlen(error.what()));
                     MessageBoxW(window_, text.c_str(), L"Render error", MB_OK | MB_ICONERROR);
                     quit = true;
                 }
+            }
+        } else if (statusDue && swapchainReady) {
+            try {
+                renderer_.Render(OverlayText(nullptr));
+                lastStatusRenderQpc = now;
+            } catch (const std::exception& error) {
+                DiagnosticLog(L"Status render failed: " +
+                              std::wstring(error.what(), error.what() + strlen(error.what())));
+                quit = true;
             }
         }
     }

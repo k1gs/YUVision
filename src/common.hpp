@@ -5,6 +5,8 @@
 
 #include <chrono>
 #include <cstdint>
+#include <fstream>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 
@@ -42,4 +44,38 @@ inline double QpcSeconds(int64_t ticks) {
         return static_cast<double>(value.QuadPart);
     }();
     return static_cast<double>(ticks) / frequency;
+}
+
+inline std::wstring DiagnosticLogPath() {
+    wchar_t directory[MAX_PATH]{};
+    const DWORD length = GetTempPathW(static_cast<DWORD>(std::size(directory)), directory);
+    if (length == 0 || length >= std::size(directory)) return L"331Viewer-YUY2Fix.log";
+    return std::wstring(directory, length) + L"331Viewer-YUY2Fix.log";
+}
+
+inline std::string Utf8(const std::wstring& text) {
+    if (text.empty()) return {};
+    const int size = WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()),
+                                         nullptr, 0, nullptr, nullptr);
+    std::string result(static_cast<size_t>(size), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), result.data(), size,
+                        nullptr, nullptr);
+    return result;
+}
+
+inline void ResetDiagnosticLog() {
+    DeleteFileW(DiagnosticLogPath().c_str());
+}
+
+inline void DiagnosticLog(const std::wstring& message) {
+    static std::mutex mutex;
+    std::scoped_lock lock(mutex);
+    SYSTEMTIME time{};
+    GetLocalTime(&time);
+    wchar_t prefix[32]{};
+    swprintf_s(prefix, L"%02u:%02u:%02u.%03u  ", time.wHour, time.wMinute, time.wSecond,
+               time.wMilliseconds);
+    std::ofstream stream(DiagnosticLogPath(), std::ios::binary | std::ios::app);
+    const std::string line = Utf8(std::wstring(prefix) + message + L"\r\n");
+    stream.write(line.data(), static_cast<std::streamsize>(line.size()));
 }

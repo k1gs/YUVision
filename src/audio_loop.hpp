@@ -6,6 +6,7 @@
 #include <mmdeviceapi.h>
 
 #include <atomic>
+#include <array>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -53,7 +54,7 @@ private:
     static constexpr uint32_t kChannels = 2;
     static constexpr uint32_t kRingFrames = 4096;
     static constexpr uint32_t kMaxBufferedFrames = 1920; // 40 ms at 48 kHz.
-    std::vector<float> ring_{static_cast<size_t>(kRingFrames) * kChannels};
+    std::array<float, static_cast<size_t>(kRingFrames) * kChannels> ring_{};
     uint32_t readFrame_ = 0;
     uint32_t writeFrame_ = 0;
     std::atomic<uint32_t> bufferedFrames_{0};

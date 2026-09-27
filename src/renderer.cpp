@@ -342,20 +342,7 @@ bool Renderer::Upload(const CapturedFrame& frame) {
 }
 
 HRESULT Renderer::Render(const std::wstring& overlay) {
-    if (!sourceView_ || !renderTarget_) return S_FALSE;
-    D3D11_MAPPED_SUBRESOURCE mapped{};
-    CheckHr(context_->Map(constants_.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped),
-            "Map(constants)");
-    auto* settings = static_cast<ShaderSettings*>(mapped.pData);
-    settings->sourceSize[0] = static_cast<float>(sourceWidth_);
-    settings->sourceSize[1] = static_cast<float>(sourceHeight_);
-    settings->outputSize[0] = static_cast<float>(outputWidth_);
-    settings->outputSize[1] = static_cast<float>(outputHeight_);
-    settings->chromaOffset = chromaOffset_;
-    settings->chromaMode = static_cast<int>(chromaMode_);
-    settings->limitedRange = limitedRange_ ? 1 : 0;
-    settings->padding = 0;
-    context_->Unmap(constants_.Get(), 0);
+    if (!renderTarget_) return S_FALSE;
 
     const D3D11_VIEWPORT viewport{0, 0, static_cast<float>(outputWidth_),
                                   static_cast<float>(outputHeight_), 0, 1};
@@ -364,15 +351,31 @@ HRESULT Renderer::Render(const std::wstring& overlay) {
     context_->OMSetRenderTargets(1, &target, nullptr);
     const float black[4]{0, 0, 0, 1};
     context_->ClearRenderTargetView(renderTarget_.Get(), black);
-    context_->IASetInputLayout(nullptr);
-    context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    context_->VSSetShader(vertexShader_.Get(), nullptr, 0);
-    context_->PSSetShader(pixelShader_.Get(), nullptr, 0);
-    ID3D11ShaderResourceView* view = sourceView_.Get();
-    context_->PSSetShaderResources(0, 1, &view);
-    ID3D11Buffer* cb = constants_.Get();
-    context_->PSSetConstantBuffers(0, 1, &cb);
-    context_->Draw(3, 0);
+    if (sourceView_) {
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        CheckHr(context_->Map(constants_.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped),
+                "Map(constants)");
+        auto* settings = static_cast<ShaderSettings*>(mapped.pData);
+        settings->sourceSize[0] = static_cast<float>(sourceWidth_);
+        settings->sourceSize[1] = static_cast<float>(sourceHeight_);
+        settings->outputSize[0] = static_cast<float>(outputWidth_);
+        settings->outputSize[1] = static_cast<float>(outputHeight_);
+        settings->chromaOffset = chromaOffset_;
+        settings->chromaMode = static_cast<int>(chromaMode_);
+        settings->limitedRange = limitedRange_ ? 1 : 0;
+        settings->padding = 0;
+        context_->Unmap(constants_.Get(), 0);
+
+        context_->IASetInputLayout(nullptr);
+        context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        context_->VSSetShader(vertexShader_.Get(), nullptr, 0);
+        context_->PSSetShader(pixelShader_.Get(), nullptr, 0);
+        ID3D11ShaderResourceView* view = sourceView_.Get();
+        context_->PSSetShaderResources(0, 1, &view);
+        ID3D11Buffer* cb = constants_.Get();
+        context_->PSSetConstantBuffers(0, 1, &cb);
+        context_->Draw(3, 0);
+    }
 
     if (overlayEnabled_) DrawOverlay(overlay);
     const UINT flags = (!vsync_ && tearingSupported_) ? DXGI_PRESENT_ALLOW_TEARING : 0;
@@ -393,9 +396,9 @@ HRESULT Renderer::Render(const std::wstring& overlay) {
 
 void Renderer::DrawOverlay(const std::wstring& text) {
     d2dContext_->BeginDraw();
-    const D2D1_RECT_F panel = D2D1::RectF(12, 12, 560, 151);
+    const D2D1_RECT_F panel = D2D1::RectF(12, 12, 760, 212);
     d2dContext_->FillRectangle(panel, shadowBrush_.Get());
-    const D2D1_RECT_F layout = D2D1::RectF(22, 18, 550, 148);
+    const D2D1_RECT_F layout = D2D1::RectF(22, 18, 750, 208);
     d2dContext_->DrawTextW(text.c_str(), static_cast<UINT32>(text.size()), textFormat_.Get(),
                            layout, overlayBrush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
     const HRESULT hr = d2dContext_->EndDraw();
