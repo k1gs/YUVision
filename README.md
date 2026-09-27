@@ -8,6 +8,12 @@ only the newest frame, so slow rendering drops old frames instead of increasing 
 
 ![YUY2 chroma reconstruction comparison](Compare.png)
 
+### More comparisons
+
+![Game UI chroma comparison](game_cmp.png)
+
+![Red and yellow UI comparison](hs_cmp.png)
+
 ## Features
 
 - Native Media Foundation capture with hidden format conversion disabled

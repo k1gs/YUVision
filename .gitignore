@@ -2,6 +2,7 @@
 /build/
 /out/
 /cmake-build-*/
+/yuvision
 
 # Visual Studio and CMake user state
 /.vs/
