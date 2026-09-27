@@ -1,6 +1,6 @@
 # Architecture and latency model
 
-## Why Media Foundation
+## Windows capture: Media Foundation
 
 Media Foundation exposes the native types advertised by a UVC source, supports an asynchronous
 Source Reader and has an explicit switch that disables converters. DirectShow is retained as a
@@ -83,3 +83,23 @@ scheduling jitter and is drained as soon as render space is available. Its hard 
 40 ms; on overflow it discards oldest frames. This is the only
 multi-sample queue in the application and cannot grow over time. Video is never delayed to follow
 audio. A manual sync-offset control is deferred until measured device behavior is available.
+
+## Linux backend
+
+The Linux MVP keeps the same latency policy and reconstruction math while using native Linux
+interfaces:
+
+- V4L2 requests `V4L2_PIX_FMT_YUYV` at exactly 1920x1080 and 60 fps. Two MMAP buffers are
+  registered with the driver, but every poll drains all ready buffers and retains only the newest
+  one for rendering. Superseded buffers are returned immediately rather than forming an
+  application queue.
+- SDL3 creates the window and OpenGL 3.3 context. The first GLSL pass uploads packed `Y0 Cb Y1 Cr`,
+  performs the same chroma reconstruction and Rec.709 conversion as the D3D11 path, and writes a
+  native-resolution RGB texture. The second pass handles aspect-correct window scaling.
+- ALSA capture and playback run non-blocking at 48 kHz stereo S16. A bounded ring holds at most
+  1920 frames (40 ms) and drops the oldest audio on overflow.
+
+`--shader-test` renders a synthetic packed-YUYV frame and waits for GPU completion. It provides a
+hardware-independent check that SDL, the OpenGL context, both shader programs, texture upload,
+the intermediate framebuffer and presentation all initialize successfully. Actual UVC and HDMI
+audio behavior still has to be verified on a Linux host with the capture card attached.
