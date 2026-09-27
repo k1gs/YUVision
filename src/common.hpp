@@ -49,8 +49,8 @@ inline double QpcSeconds(int64_t ticks) {
 inline std::wstring DiagnosticLogPath() {
     wchar_t directory[MAX_PATH]{};
     const DWORD length = GetTempPathW(static_cast<DWORD>(std::size(directory)), directory);
-    if (length == 0 || length >= std::size(directory)) return L"331Viewer-YUY2Fix.log";
-    return std::wstring(directory, length) + L"331Viewer-YUY2Fix.log";
+    if (length == 0 || length >= std::size(directory)) return L"YUVision.log";
+    return std::wstring(directory, length) + L"YUVision.log";
 }
 
 inline std::string Utf8(const std::wstring& text) {

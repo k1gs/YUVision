@@ -13,7 +13,7 @@ published maxima are:
 Source: [ezcap331 CAM LINK 4K product specification](https://www.ezcap.com/ezcap331).
 
 These are product-level maxima, not proof of the exact media-type table exposed by a particular
-firmware/USB link. 331Viewer-YUY2Fix therefore enumerates `GetNativeMediaType` and only selects the
+firmware/USB link. YUVision therefore enumerates `GetNativeMediaType` and only selects the
 exact native entry returned by the connected unit. The MVP accepts YUY2; it shows but disables
 unimplemented native NV12/RGB entries.
 

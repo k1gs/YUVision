@@ -261,7 +261,7 @@ void App::StartVideo(size_t modeIndex) {
         currentFormat_ = L"Capture start failed: " + HrText(hr);
         captureState_ = capture_.LastError().empty() ? currentFormat_ : capture_.LastError();
         DiagnosticLog(captureState_);
-        MessageBoxW(window_, currentFormat_.c_str(), L"331Viewer-YUY2Fix", MB_OK | MB_ICONERROR);
+        MessageBoxW(window_, currentFormat_.c_str(), L"YUVision", MB_OK | MB_ICONERROR);
         return;
     }
     videoModeIndex_ = modeIndex;
@@ -275,7 +275,7 @@ void App::StartAudio() {
     const HRESULT hr = audio_.Start(audioInputs_[audioInputIndex_], audioOutputs_[audioOutputIndex_]);
     if (FAILED(hr)) {
         MessageBoxW(window_, L"Could not start 48 kHz stereo WASAPI audio. Select another input "
-                             L"or output endpoint.", L"331Viewer-YUY2Fix audio", MB_OK | MB_ICONWARNING);
+                             L"or output endpoint.", L"YUVision audio", MB_OK | MB_ICONWARNING);
     }
 }
 
@@ -446,7 +446,7 @@ LRESULT App::WindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 int App::Run(HINSTANCE instance, int show) {
     instance_ = instance;
     ResetDiagnosticLog();
-    DiagnosticLog(L"331Viewer-YUY2Fix starting");
+    DiagnosticLog(L"YUVision starting");
     SetProcessDpiAwareness(PROCESS_PER_MONITOR_DPI_AWARE);
     WNDCLASSEXW windowClass{sizeof(WNDCLASSEXW)};
     windowClass.style = CS_HREDRAW | CS_VREDRAW;
@@ -454,13 +454,13 @@ int App::Run(HINSTANCE instance, int show) {
     windowClass.hInstance = instance_;
     windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     windowClass.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
-    windowClass.lpszClassName = L"Viewer331YUY2FixWindow";
+    windowClass.lpszClassName = L"YUVisionWindow";
     windowClass.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
     RegisterClassExW(&windowClass);
 
     RECT rect{0, 0, 1280, 720};
     AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, TRUE);
-    window_ = CreateWindowExW(0, windowClass.lpszClassName, L"331Viewer-YUY2Fix",
+    window_ = CreateWindowExW(0, windowClass.lpszClassName, L"YUVision",
                               WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
                               rect.right - rect.left, rect.bottom - rect.top, nullptr, nullptr,
                               instance_, this);
@@ -545,7 +545,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
         CoUninitialize();
         return result;
     } catch (const std::exception& error) {
-        MessageBoxA(nullptr, error.what(), "331Viewer-YUY2Fix fatal error", MB_OK | MB_ICONERROR);
+        MessageBoxA(nullptr, error.what(), "YUVision fatal error", MB_OK | MB_ICONERROR);
         MFShutdown();
         CoUninitialize();
         return 1;
