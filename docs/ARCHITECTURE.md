@@ -27,9 +27,12 @@ the capture-card firmware generated YUY2 internally.
    `dropped`; old frames never form a queue.
 3. The render thread swaps the pending storage into its local frame, maps one dynamic D3D11
    texture and uploads the packed bytes.
-4. A single full-screen shader reconstructs chroma, converts Rec.709 YCbCr to RGB and writes the
-   swapchain back buffer. No intermediate full-resolution RGB image exists.
-5. The flip-discard swapchain has two buffers but `SetMaximumFrameLatency(1)` limits queued work.
+4. The first GPU pass reconstructs chroma and converts Rec.709 YCbCr into one native-resolution
+   RGB texture. This keeps reconstruction independent from the window size.
+5. The second GPU pass scales that completed RGB frame into the swapchain back buffer. Both passes
+   run in the same D3D11 frame; the intermediate texture is never copied through the CPU and does
+   not add a frame queue.
+6. The flip-discard swapchain has two buffers but `SetMaximumFrameLatency(1)` limits queued work.
 
 The explicit application queue therefore has depth 0 or 1. Potentially hidden queues remain in
 the capture firmware, UVC kernel driver, Media Foundation capture source, Windows compositor and

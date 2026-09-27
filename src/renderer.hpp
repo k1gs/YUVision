@@ -24,6 +24,7 @@ public:
     ~Renderer();
     void Initialize(HWND window);
     void Resize(UINT width, UINT height);
+    void ClearSource();
     bool Upload(const CapturedFrame& frame);
     HRESULT Render(const std::wstring& overlay);
 

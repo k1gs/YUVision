@@ -6,6 +6,8 @@ YUVision is a low-latency Windows viewer for USB HDMI capture cards. It is built
 The app reconstructs 4:2:2 chroma and converts Rec.709 YUY2 to RGB in a D3D11 shader. It keeps
 only the newest frame, so slow rendering drops old frames instead of increasing latency.
 
+![YUY2 chroma reconstruction comparison](Compare.png)
+
 ## Features
 
 - Native Media Foundation capture with hidden format conversion disabled

@@ -154,8 +154,8 @@ float3 ToRgb(float y, float2 uv) {
         cb = (uv.x - 128.0/255.0) * (255.0/224.0);
         cr = (uv.y - 128.0/255.0) * (255.0/224.0);
     } else {
-        cb = uv.x - 0.5;
-        cr = uv.y - 0.5;
+        cb = uv.x - 128.0/255.0;
+        cr = uv.y - 128.0/255.0;
     }
     return float3(y + 1.5748*cr,
                   y - 0.187324*cb - 0.468124*cr,
@@ -419,14 +419,37 @@ void Renderer::ReleaseSwapchainResources() {
 
 void Renderer::Resize(UINT width, UINT height) {
     if (!swapchain_ || width == 0 || height == 0) return;
-    outputWidth_ = width;
-    outputHeight_ = height;
+    const UINT previousWidth = outputWidth_;
+    const UINT previousHeight = outputHeight_;
     ReleaseSwapchainResources();
     UINT flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
     if (tearingSupported_) flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
-    CheckHr(swapchain_->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, flags),
-            "ResizeBuffers");
+    const HRESULT hr = swapchain_->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, flags);
+    if (FAILED(hr)) {
+        // ResizeBuffers keeps the existing buffers on failure. Reattach them so a transient
+        // resize error cannot permanently leave the window without a render target.
+        outputWidth_ = previousWidth;
+        outputHeight_ = previousHeight;
+        CreateSwapchainResources();
+        CheckHr(hr, "ResizeBuffers");
+    }
+    outputWidth_ = width;
+    outputHeight_ = height;
     CreateSwapchainResources();
+}
+
+void Renderer::ClearSource() {
+    if (context_) {
+        ID3D11ShaderResourceView* nullViews[2]{};
+        context_->PSSetShaderResources(0, 2, nullViews);
+    }
+    convertedTarget_.Reset();
+    convertedView_.Reset();
+    convertedTexture_.Reset();
+    sourceView_.Reset();
+    sourceTexture_.Reset();
+    sourceWidth_ = 0;
+    sourceHeight_ = 0;
 }
 
 bool Renderer::Upload(const CapturedFrame& frame) {
@@ -557,9 +580,11 @@ HRESULT Renderer::Render(const std::wstring& overlay) {
 
 void Renderer::DrawOverlay(const std::wstring& text) {
     d2dContext_->BeginDraw();
-    const D2D1_RECT_F panel = D2D1::RectF(12, 12, 760, 212);
+    const auto lineCount = 1 + std::count(text.begin(), text.end(), L'\n');
+    const float panelBottom = 30.0f + static_cast<float>(lineCount) * 19.0f;
+    const D2D1_RECT_F panel = D2D1::RectF(12, 12, 760, panelBottom);
     d2dContext_->FillRectangle(panel, shadowBrush_.Get());
-    const D2D1_RECT_F layout = D2D1::RectF(22, 18, 750, 208);
+    const D2D1_RECT_F layout = D2D1::RectF(22, 18, 750, panelBottom - 4.0f);
     d2dContext_->DrawTextW(text.c_str(), static_cast<UINT32>(text.size()), textFormat_.Get(),
                            layout, overlayBrush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
     const HRESULT hr = d2dContext_->EndDraw();

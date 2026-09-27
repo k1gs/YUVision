@@ -135,10 +135,12 @@ HRESULT AudioLoop::Start(const AudioEndpoint& input, const AudioEndpoint& output
         DiagnosticLog(L"Audio thread created: " + input.name + L" -> " + output.name);
         return S_OK;
     } catch (const std::exception& exception) {
+        std::wstring detail(exception.what(), exception.what() + strlen(exception.what()));
         {
             std::scoped_lock lock(errorMutex_);
-            error_.assign(exception.what(), exception.what() + strlen(exception.what()));
+            error_ = detail;
         }
+        DiagnosticLog(L"Audio setup: " + detail);
         Stop();
         return E_FAIL;
     }
@@ -271,8 +273,14 @@ void AudioLoop::FillRender() {
 }
 
 void AudioLoop::SetError(HRESULT hr, const wchar_t* context) {
-    std::scoped_lock lock(errorMutex_);
-    error_ = context;
-    error_ += L": ";
-    error_ += HrText(hr);
+    std::wstring message = context;
+    message += L": ";
+    message += HrText(hr);
+    bool changed = false;
+    {
+        std::scoped_lock lock(errorMutex_);
+        changed = error_ != message;
+        error_ = message;
+    }
+    if (changed) DiagnosticLog(L"Audio error: " + message);
 }

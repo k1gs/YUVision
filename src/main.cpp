@@ -51,11 +51,13 @@ std::wstring DefaultEndpointId(EDataFlow flow) {
 
 class App {
 public:
+    ~App();
     int Run(HINSTANCE instance, int show);
     LRESULT WindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam);
 
 private:
     void EnumerateDevices();
+    HMENU BuildMenu(bool popupRoot) const;
     void RebuildMenu();
     void StartBestVideo();
     void StartVideo(size_t modeIndex);
@@ -67,6 +69,7 @@ private:
     static size_t FindBestMode(const VideoDevice& device);
 
     HWND window_ = nullptr;
+    HMENU contextMenu_ = nullptr;
     HINSTANCE instance_ = nullptr;
     Renderer renderer_;
     VideoCapture capture_;
@@ -87,6 +90,10 @@ private:
 };
 
 App* gApp = nullptr;
+
+App::~App() {
+    if (contextMenu_) DestroyMenu(contextMenu_);
+}
 
 LRESULT CALLBACK StaticWindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
     if (message == WM_NCCREATE) {
@@ -151,8 +158,8 @@ void App::EnumerateDevices() {
     }
 }
 
-void App::RebuildMenu() {
-    HMENU menu = CreateMenu();
+HMENU App::BuildMenu(bool popupRoot) const {
+    HMENU menu = popupRoot ? CreatePopupMenu() : CreateMenu();
     HMENU video = CreatePopupMenu();
     HMENU devices = CreatePopupMenu();
     for (size_t i = 0; i < videoDevices_.size(); ++i) {
@@ -227,24 +234,41 @@ void App::RebuildMenu() {
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(chroma), L"Chroma");
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(range), L"Range");
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(audio), L"Audio");
+    return menu;
+}
+
+void App::RebuildMenu() {
     HMENU old = GetMenu(window_);
-    if (fullscreen_) DestroyMenu(menu);
-    else SetMenu(window_, menu);
+    if (fullscreen_) {
+        if (old) SetMenu(window_, nullptr);
+    } else {
+        SetMenu(window_, BuildMenu(false));
+    }
     if (old) DestroyMenu(old);
+
+    HMENU oldContext = contextMenu_;
+    contextMenu_ = BuildMenu(true);
+    if (oldContext) DestroyMenu(oldContext);
     DrawMenuBar(window_);
 }
 
 void App::StartBestVideo() {
     if (videoDeviceIndex_ >= videoDevices_.size()) {
+        capture_.Stop();
+        renderer_.ClearSource();
         captureState_ = L"No Media Foundation video capture devices found";
         DiagnosticLog(captureState_);
+        RebuildMenu();
         return;
     }
     const size_t mode = FindBestMode(videoDevices_[videoDeviceIndex_]);
     if (mode == videoDevices_[videoDeviceIndex_].modes.size()) {
+        capture_.Stop();
+        renderer_.ClearSource();
         currentFormat_ = L"No native YUY2 mode on selected device";
         captureState_ = currentFormat_;
         DiagnosticLog(captureState_);
+        RebuildMenu();
         return;
     }
     StartVideo(mode);
@@ -255,6 +279,7 @@ void App::StartVideo(size_t modeIndex) {
         modeIndex >= videoDevices_[videoDeviceIndex_].modes.size()) return;
     const auto& mode = videoDevices_[videoDeviceIndex_].modes[modeIndex];
     if (!mode.IsYuy2()) return;
+    renderer_.ClearSource();
     captureState_ = L"Opening " + videoDevices_[videoDeviceIndex_].name;
     DiagnosticLog(captureState_ + L" / " + mode.Label());
     const HRESULT hr = capture_.Start(videoDevices_[videoDeviceIndex_], mode);
@@ -275,8 +300,11 @@ void App::StartAudio() {
     if (audioInputIndex_ >= audioInputs_.size() || audioOutputIndex_ >= audioOutputs_.size()) return;
     const HRESULT hr = audio_.Start(audioInputs_[audioInputIndex_], audioOutputs_[audioOutputIndex_]);
     if (FAILED(hr)) {
-        MessageBoxW(window_, L"Could not start 48 kHz stereo WASAPI audio. Select another input "
-                             L"or output endpoint.", L"YUVision audio", MB_OK | MB_ICONWARNING);
+        std::wstring message = L"Could not start 48 kHz stereo WASAPI audio. Select another "
+                               L"input or output endpoint.";
+        const std::wstring detail = audio_.Stats().error;
+        if (!detail.empty()) message += L"\n\n" + detail;
+        MessageBoxW(window_, message.c_str(), L"YUVision audio", MB_OK | MB_ICONWARNING);
     }
 }
 
@@ -366,7 +394,9 @@ void App::ToggleFullscreen() {
         GetWindowPlacement(window_, &windowPlacement_);
         MONITORINFO monitor{sizeof(MONITORINFO)};
         GetMonitorInfoW(MonitorFromWindow(window_, MONITOR_DEFAULTTONEAREST), &monitor);
+        HMENU oldMenu = GetMenu(window_);
         SetMenu(window_, nullptr);
+        if (oldMenu) DestroyMenu(oldMenu);
         SetWindowLongPtrW(window_, GWL_STYLE, windowStyle_ & ~WS_OVERLAPPEDWINDOW);
         SetWindowPos(window_, HWND_TOP, monitor.rcMonitor.left, monitor.rcMonitor.top,
                      monitor.rcMonitor.right - monitor.rcMonitor.left,
@@ -410,8 +440,9 @@ std::wstring App::OverlayText(const CapturedFrame* frame) const {
         << L"   Sharp scale " << (renderer_.DownscaleAa() ? L"On" : L"Off")
         << L"   Tearing " << (renderer_.TearingSupported() ? L"available" : L"unavailable")
         << L"   Audio " << (audioStats.running ? L"48 kHz" : L"off")
-        << L"   audio queue " << audioStats.bufferedFrames << L" frames"
-        << L"\nLog: " << DiagnosticLogPath();
+        << L"   audio queue " << audioStats.bufferedFrames << L" frames";
+    if (!audioStats.error.empty()) out << L"\nAudio error: " << audioStats.error;
+    out << L"\nLog: " << DiagnosticLogPath();
     return out.str();
 }
 
@@ -425,14 +456,22 @@ LRESULT App::WindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
         HandleKey(static_cast<UINT>(wparam), (GetKeyState(VK_SHIFT) & 0x8000) != 0);
         return 0;
     case WM_CONTEXTMENU:
-        if (HMENU menu = GetMenu(window_)) {
+        if (contextMenu_) {
             POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
-            TrackPopupMenu(GetSubMenu(menu, 0), TPM_RIGHTBUTTON, point.x, point.y, 0, window_, nullptr);
+            if (point.x == -1 && point.y == -1) GetCursorPos(&point);
+            TrackPopupMenu(contextMenu_, TPM_RIGHTBUTTON, point.x, point.y, 0, window_, nullptr);
         }
         return 0;
     case WM_SIZE:
         if (rendererReady_ && wparam != SIZE_MINIMIZED) {
-            try { renderer_.Resize(LOWORD(lparam), HIWORD(lparam)); } catch (...) {}
+            try {
+                renderer_.Resize(LOWORD(lparam), HIWORD(lparam));
+            } catch (const std::exception& error) {
+                const std::wstring detail(error.what(), error.what() + strlen(error.what()));
+                DiagnosticLog(L"Resize error: " + detail);
+                MessageBoxW(window_, detail.c_str(), L"YUVision resize error",
+                            MB_OK | MB_ICONERROR);
+            }
         }
         return 0;
     case WM_ERASEBKGND:
