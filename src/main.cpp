@@ -1,5 +1,6 @@
 #include "audio_loop.hpp"
 #include "renderer.hpp"
+#include "resource.h"
 #include "video_capture.hpp"
 
 #include <mfapi.h>
@@ -455,7 +456,12 @@ int App::Run(HINSTANCE instance, int show) {
     windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW);
     windowClass.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
     windowClass.lpszClassName = L"YUVisionWindow";
-    windowClass.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
+    windowClass.hIcon = static_cast<HICON>(LoadImageW(
+        instance_, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON,
+        GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_SHARED));
+    windowClass.hIconSm = static_cast<HICON>(LoadImageW(
+        instance_, MAKEINTRESOURCEW(IDI_APP_ICON), IMAGE_ICON,
+        GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED));
     RegisterClassExW(&windowClass);
 
     RECT rect{0, 0, 1280, 720};

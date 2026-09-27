@@ -6,6 +6,7 @@ if(NOT WIN32)
 endif()
 
 add_executable(yuvision WIN32
+  src/app.rc
   src/main.cpp
   src/video_capture.cpp
   src/video_capture.hpp
@@ -14,6 +15,7 @@ add_executable(yuvision WIN32
   src/audio_loop.cpp
   src/audio_loop.hpp
   src/common.hpp
+  src/resource.h
 )
 
 set_target_properties(yuvision PROPERTIES OUTPUT_NAME "YUVision")
