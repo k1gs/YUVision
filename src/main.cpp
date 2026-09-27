@@ -25,6 +25,7 @@ constexpr UINT kOffsetPlus = 3031;
 constexpr UINT kThresholdMinus = 3040;
 constexpr UINT kThresholdPlus = 3041;
 constexpr UINT kToggleSplit = 3050;
+constexpr UINT kToggleDownscaleAa = 3051;
 constexpr UINT kAudioInputBase = 4000;
 constexpr UINT kAudioOutputBase = 5000;
 
@@ -177,6 +178,8 @@ void App::RebuildMenu() {
                 L"Borderless fullscreen\tF11");
     AppendMenuW(video, MF_STRING | (renderer_.OverlayEnabled() ? MF_CHECKED : 0), kToggleOverlay,
                 L"Debug overlay\tO");
+    AppendMenuW(video, MF_STRING | (renderer_.DownscaleAa() ? MF_CHECKED : 0),
+                kToggleDownscaleAa, L"Window downscale AA\tA");
 
     HMENU chroma = CreatePopupMenu();
     for (int i = 0; i < 6; ++i) {
@@ -297,6 +300,9 @@ void App::HandleCommand(UINT command) {
     } else if (command == kToggleOverlay) {
         renderer_.SetOverlay(!renderer_.OverlayEnabled());
         RebuildMenu();
+    } else if (command == kToggleDownscaleAa) {
+        renderer_.SetDownscaleAa(!renderer_.DownscaleAa());
+        RebuildMenu();
     } else if (command == kOffsetMinus || command == kOffsetPlus) {
         renderer_.SetChromaOffset(renderer_.ChromaOffset() +
                                   (command == kOffsetPlus ? 0.05f : -0.05f));
@@ -326,6 +332,7 @@ void App::HandleKey(UINT key, bool shift) {
         break;
     case 'V': HandleCommand(kToggleVsync); break;
     case 'O': HandleCommand(kToggleOverlay); break;
+    case 'A': HandleCommand(kToggleDownscaleAa); break;
     case 'R': renderer_.SetLimitedRange(!renderer_.LimitedRange()); RebuildMenu(); break;
     case '1': renderer_.SetChromaMode(ChromaMode::Nearest); RebuildMenu(); break;
     case '2': renderer_.SetChromaMode(ChromaMode::Bilinear); RebuildMenu(); break;
@@ -399,6 +406,7 @@ std::wstring App::OverlayText(const CapturedFrame* frame) const {
         << L"   edge threshold " << renderer_.EdgeThreshold()
         << (renderer_.SplitScreen() ? L"   SPLIT" : L"")
         << L"\nVSync " << (renderer_.Vsync() ? L"On" : L"Off")
+        << L"   Window AA " << (renderer_.DownscaleAa() ? L"On" : L"Off")
         << L"   Tearing " << (renderer_.TearingSupported() ? L"available" : L"unavailable")
         << L"   Audio " << (audioStats.running ? L"48 kHz" : L"off")
         << L"   audio queue " << audioStats.bufferedFrames << L" frames"

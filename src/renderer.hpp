@@ -42,6 +42,8 @@ public:
     float EdgeThreshold() const { return edgeThreshold_; }
     void SetSplitScreen(bool value) { splitScreen_ = value; }
     bool SplitScreen() const { return splitScreen_; }
+    void SetDownscaleAa(bool value) { downscaleAa_ = value; }
+    bool DownscaleAa() const { return downscaleAa_; }
     HANDLE FrameLatencyEvent() const { return frameLatencyEvent_; }
     uint64_t PresentedFrames() const { return presentedFrames_; }
     double RenderFps() const { return renderFps_; }
@@ -88,6 +90,7 @@ private:
     float chromaOffset_ = 0.0f;
     float edgeThreshold_ = 0.04f;
     bool splitScreen_ = false;
+    bool downscaleAa_ = true;
     uint64_t presentedFrames_ = 0;
     double renderFps_ = 0.0;
     uint32_t fpsWindowFrames_ = 0;

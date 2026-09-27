@@ -17,7 +17,8 @@ cbuffer Settings : register(b0) {
     int chromaMode;
     int limitedRange;
     int splitScreen;
-    float3 padding;
+    int downscaleAa;
+    float2 padding;
 };
 
 struct VsOut { float4 position : SV_Position; float2 uv : TEXCOORD0; };
@@ -160,6 +161,13 @@ float3 ToRgb(float y, float2 uv) {
                   y + 1.8556*cb);
 }
 
+float3 SampleSource(float2 pixel, int mode) {
+    int2 ip = int2(clamp(floor(pixel + 0.5), 0.0, sourceSize - 1.0));
+    float y = LumaAt(ip.x, ip.y);
+    float2 uv = ReconstructChroma(pixel.x, ip.y, y, mode);
+    return saturate(ToRgb(y, uv));
+}
+
 float4 PSMain(VsOut input) : SV_Target {
     float sourceAspect = sourceSize.x / sourceSize.y;
     float outputAspect = outputSize.x / outputSize.y;
@@ -170,11 +178,23 @@ float4 PSMain(VsOut input) : SV_Target {
     if (any(centered < 0.0) || any(centered > 1.0)) return float4(0, 0, 0, 1);
 
     float2 pixel = centered * sourceSize - 0.5;
-    int2 ip = int2(clamp(floor(pixel + 0.5), 0.0, sourceSize - 1.0));
-    float y = LumaAt(ip.x, ip.y);
     int activeMode = (splitScreen != 0 && input.uv.x < 0.5) ? 1 : chromaMode;
-    float2 uv = ReconstructChroma(pixel.x, ip.y, y, activeMode);
-    float3 rgb = saturate(ToRgb(y, uv));
+    float2 contentOutputSize = max(outputSize * scale, 1.0);
+    float2 sourcePerOutput = sourceSize / contentOutputSize;
+    float3 rgb;
+    if (downscaleAa != 0 && any(sourcePerOutput > 1.001)) {
+        // A four-point box approximation prevents fractional downscales from repeatedly
+        // selecting and skipping source rows/columns. Chroma is reconstructed at every
+        // tap, so no intermediate RGB texture or additional frame queue is required.
+        float2 radius = 0.25 * max(sourcePerOutput, 1.0);
+        rgb = 0.25 * (
+            SampleSource(pixel + float2(-radius.x, -radius.y), activeMode) +
+            SampleSource(pixel + float2( radius.x, -radius.y), activeMode) +
+            SampleSource(pixel + float2(-radius.x,  radius.y), activeMode) +
+            SampleSource(pixel + float2( radius.x,  radius.y), activeMode));
+    } else {
+        rgb = SampleSource(pixel, activeMode);
+    }
     if (splitScreen != 0 && abs(input.uv.x - 0.5) < 1.25 / outputSize.x) {
         rgb = float3(0.85, 0.85, 0.85);
     }
@@ -190,7 +210,8 @@ struct alignas(16) ShaderSettings {
     int chromaMode;
     int limitedRange;
     int splitScreen;
-    float padding[3];
+    int downscaleAa;
+    float padding[2];
 };
 
 static_assert(sizeof(ShaderSettings) == 48);
@@ -425,7 +446,8 @@ HRESULT Renderer::Render(const std::wstring& overlay) {
         settings->chromaMode = static_cast<int>(chromaMode_);
         settings->limitedRange = limitedRange_ ? 1 : 0;
         settings->splitScreen = splitScreen_ ? 1 : 0;
-        settings->padding[0] = settings->padding[1] = settings->padding[2] = 0;
+        settings->downscaleAa = downscaleAa_ ? 1 : 0;
+        settings->padding[0] = settings->padding[1] = 0;
         context_->Unmap(constants_.Get(), 0);
 
         context_->IASetInputLayout(nullptr);
