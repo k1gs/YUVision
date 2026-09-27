@@ -22,6 +22,9 @@ constexpr UINT kToggleFullscreen = 3021;
 constexpr UINT kToggleOverlay = 3022;
 constexpr UINT kOffsetMinus = 3030;
 constexpr UINT kOffsetPlus = 3031;
+constexpr UINT kThresholdMinus = 3040;
+constexpr UINT kThresholdPlus = 3041;
+constexpr UINT kToggleSplit = 3050;
 constexpr UINT kAudioInputBase = 4000;
 constexpr UINT kAudioOutputBase = 5000;
 
@@ -176,7 +179,7 @@ void App::RebuildMenu() {
                 L"Debug overlay\tO");
 
     HMENU chroma = CreatePopupMenu();
-    for (int i = 0; i < 4; ++i) {
+    for (int i = 0; i < 5; ++i) {
         const auto mode = static_cast<ChromaMode>(i);
         AppendMenuW(chroma, MF_STRING | (renderer_.GetChromaMode() == mode ? MF_CHECKED : 0),
                     kChromaBase + i, ChromaModeName(mode));
@@ -184,6 +187,17 @@ void App::RebuildMenu() {
     AppendMenuW(chroma, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(chroma, MF_STRING, kOffsetMinus, L"Offset -0.05 px\tLeft");
     AppendMenuW(chroma, MF_STRING, kOffsetPlus, L"Offset +0.05 px\tRight");
+    AppendMenuW(chroma, MF_SEPARATOR, 0, nullptr);
+    std::wostringstream thresholdLabel;
+    thresholdLabel.setf(std::ios::fixed);
+    thresholdLabel.precision(2);
+    thresholdLabel << L"Edge threshold: " << renderer_.EdgeThreshold();
+    AppendMenuW(chroma, MF_STRING | MF_GRAYED, 0, thresholdLabel.str().c_str());
+    AppendMenuW(chroma, MF_STRING, kThresholdMinus, L"Threshold -0.01\tDown");
+    AppendMenuW(chroma, MF_STRING, kThresholdPlus, L"Threshold +0.01\tUp");
+    AppendMenuW(chroma, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(chroma, MF_STRING | (renderer_.SplitScreen() ? MF_CHECKED : 0), kToggleSplit,
+                L"Split: Bilinear | selected\tS");
 
     HMENU range = CreatePopupMenu();
     AppendMenuW(range, MF_STRING | (renderer_.LimitedRange() ? MF_CHECKED : 0),
@@ -269,7 +283,7 @@ void App::HandleCommand(UINT command) {
     } else if (command >= kModeBase && videoDeviceIndex_ < videoDevices_.size() &&
                command < kModeBase + videoDevices_[videoDeviceIndex_].modes.size()) {
         StartVideo(command - kModeBase);
-    } else if (command >= kChromaBase && command < kChromaBase + 4) {
+    } else if (command >= kChromaBase && command < kChromaBase + 5) {
         renderer_.SetChromaMode(static_cast<ChromaMode>(command - kChromaBase));
         RebuildMenu();
     } else if (command == kRangeLimited || command == kRangeFull) {
@@ -286,6 +300,13 @@ void App::HandleCommand(UINT command) {
     } else if (command == kOffsetMinus || command == kOffsetPlus) {
         renderer_.SetChromaOffset(renderer_.ChromaOffset() +
                                   (command == kOffsetPlus ? 0.05f : -0.05f));
+    } else if (command == kThresholdMinus || command == kThresholdPlus) {
+        renderer_.SetEdgeThreshold(renderer_.EdgeThreshold() +
+                                   (command == kThresholdPlus ? 0.01f : -0.01f));
+        RebuildMenu();
+    } else if (command == kToggleSplit) {
+        renderer_.SetSplitScreen(!renderer_.SplitScreen());
+        RebuildMenu();
     } else if (command >= kAudioInputBase && command < kAudioInputBase + audioInputs_.size()) {
         audioInputIndex_ = command - kAudioInputBase;
         StartAudio();
@@ -310,6 +331,16 @@ void App::HandleKey(UINT key, bool shift) {
     case '2': renderer_.SetChromaMode(ChromaMode::Bilinear); RebuildMenu(); break;
     case '3': renderer_.SetChromaMode(ChromaMode::Bicubic); RebuildMenu(); break;
     case '4': renderer_.SetChromaMode(ChromaMode::LumaGuided); RebuildMenu(); break;
+    case '5': renderer_.SetChromaMode(ChromaMode::AdaptiveBlend); RebuildMenu(); break;
+    case 'S': HandleCommand(kToggleSplit); break;
+    case VK_DOWN:
+        renderer_.SetEdgeThreshold(renderer_.EdgeThreshold() - (shift ? 0.025f : 0.01f));
+        RebuildMenu();
+        break;
+    case VK_UP:
+        renderer_.SetEdgeThreshold(renderer_.EdgeThreshold() + (shift ? 0.025f : 0.01f));
+        RebuildMenu();
+        break;
     case VK_LEFT:
         renderer_.SetChromaOffset(renderer_.ChromaOffset() - (shift ? 0.25f : 0.05f));
         break;
@@ -364,6 +395,8 @@ std::wstring App::OverlayText(const CapturedFrame* frame) const {
         << (renderer_.LimitedRange() ? L"Limited" : L"Full")
         << L"   " << ChromaModeName(renderer_.GetChromaMode())
         << L"   offset " << renderer_.ChromaOffset() << L" px"
+        << L"   edge threshold " << renderer_.EdgeThreshold()
+        << (renderer_.SplitScreen() ? L"   SPLIT" : L"")
         << L"\nVSync " << (renderer_.Vsync() ? L"On" : L"Off")
         << L"   Tearing " << (renderer_.TearingSupported() ? L"available" : L"unavailable")
         << L"   Audio " << (audioStats.running ? L"48 kHz" : L"off")

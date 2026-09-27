@@ -20,9 +20,12 @@ No third-party runtime dependencies are used. A Windows 10/11 SDK is required.
 
 - `F11` / `Alt+Enter`: borderless fullscreen
 - `V`: VSync on/off (tearing is used when supported)
-- `1` / `2` / `3` / `4`: nearest / bilinear / bicubic / luma-guided chroma
+- `1` / `2` / `3` / `4` / `5`: nearest / bilinear / bicubic / conservative luma-guided /
+  adaptive blend
 - `Left` / `Right`: chroma offset by 0.05 pixels
 - `Shift+Left` / `Shift+Right`: chroma offset by 0.25 pixels
+- `Down` / `Up`: edge threshold by 0.01 (`Shift`: 0.025)
+- `S`: split-screen comparison, bilinear on the left and selected mode on the right
 - `R`: Limited / Full input range
 - `O`: overlay on/off
 - Right click or the menu bar: select capture/audio devices and video mode
@@ -39,8 +42,8 @@ blank client area. The same information and the native media-type list are writt
 
 - UVC YUY2 normally arrives in system memory, so one CPU-to-GPU upload per displayed frame is
   unavoidable in this path. There is no CPU RGB conversion and no intermediate RGB texture.
-- The luma-guided mode is a small spatial joint-bilateral reconstruction, not an AI upscaler. It
-  cannot recreate chroma detail that the capture device never sampled.
+- The edge-aware modes are spatial-only reconstruction, not an AI upscaler. They cannot recreate
+  chroma detail that the capture device never sampled.
 - WASAPI uses a bounded audio ring. If the endpoints cannot both open as 48 kHz stereo float,
   audio reports an error instead of silently accepting an unknown format.
 - Manual audio sync offset and the `IAudioClient3` minimum-period path are deferred until the

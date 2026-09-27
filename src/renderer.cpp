@@ -13,9 +13,11 @@ cbuffer Settings : register(b0) {
     float2 sourceSize;
     float2 outputSize;
     float chromaOffset;
+    float edgeThreshold;
     int chromaMode;
     int limitedRange;
-    float padding;
+    int splitScreen;
+    float3 padding;
 };
 
 struct VsOut { float4 position : SV_Position; float2 uv : TEXCOORD0; };
@@ -46,11 +48,6 @@ float2 ChromaAt(int pairX, int y) {
     return p.ga;
 }
 
-float PairLuma(int pairX, int y) {
-    float4 p = Pair(pairX, y);
-    return 0.5 * (p.r + p.b);
-}
-
 float CubicWeight(float x) {
     x = abs(x);
     if (x < 1.0) return 1.5*x*x*x - 2.5*x*x + 1.0;
@@ -58,42 +55,73 @@ float CubicWeight(float x) {
     return 0.0;
 }
 
-float2 ReconstructChroma(float sourceX, int y, float targetY) {
+float2 BicubicChroma(int base, int y, float f) {
+    float2 sum = 0;
+    float weightSum = 0;
+    [unroll] for (int i = -1; i <= 2; ++i) {
+        float w = CubicWeight((float)i - f);
+        sum += ChromaAt(base + i, y) * w;
+        weightSum += w;
+    }
+    float2 result = sum / max(weightSum, 1e-5);
+    float2 lo = min(ChromaAt(base, y), ChromaAt(base + 1, y));
+    float2 hi = max(ChromaAt(base, y), ChromaAt(base + 1, y));
+    return clamp(result, lo, hi); // Avoid saturated UI ringing.
+}
+
+float EdgeConfidence(int x, int y, int base, float targetY, out float2 edgeCandidate) {
+    float centerLeft = abs(targetY - LumaAt(x - 1, y));
+    float centerRight = abs(LumaAt(x + 1, y) - targetY);
+    float primaryGradient = max(centerLeft, centerRight);
+    float competingGradient = min(centerLeft, centerRight);
+    float outerGradient = max(abs(LumaAt(x - 1, y) - LumaAt(x - 2, y)),
+                              abs(LumaAt(x + 2, y) - LumaAt(x + 1, y)));
+
+    // Two candidates only: never average chroma across a larger radius at an edge.
+    int leftReferenceX = (int)floor(base * 2.0 - chromaOffset + 0.5);
+    int rightReferenceX = (int)floor((base + 1) * 2.0 - chromaOffset + 0.5);
+    float leftMatch = abs(targetY - LumaAt(leftReferenceX, y));
+    float rightMatch = abs(targetY - LumaAt(rightReferenceX, y));
+    edgeCandidate = leftMatch <= rightMatch ? ChromaAt(base, y) : ChromaAt(base + 1, y);
+
+    float strength = smoothstep(edgeThreshold, edgeThreshold * 2.5, primaryGradient);
+    float complexity = max(competingGradient, outerGradient);
+    float isolation = 1.0 - saturate(complexity / max(primaryGradient, 1e-5));
+    float matchConfidence = smoothstep(0.0, edgeThreshold,
+                                       abs(leftMatch - rightMatch));
+    float candidateContrast = abs(LumaAt(leftReferenceX, y) - LumaAt(rightReferenceX, y));
+    float edgeAgreement = smoothstep(edgeThreshold * 0.5, edgeThreshold * 2.0,
+                                     candidateContrast);
+    return saturate(strength * isolation * matchConfidence * (0.35 + 0.65 * edgeAgreement));
+}
+
+float2 ReconstructChroma(float sourceX, int y, float targetY, int mode) {
     // 4:2:2 nominal co-sited phase: pair k's chroma is at luma x=2k.
     // chromaOffset is expressed in full-resolution luma pixels.
     float c = (sourceX + chromaOffset) * 0.5;
-    if (chromaMode == 0) return ChromaAt((int)floor(c + 0.5), y);
+    if (mode == 0) return ChromaAt((int)floor(c + 0.5), y);
 
     int base = (int)floor(c);
     float f = frac(c);
-    if (chromaMode == 1) {
-        return lerp(ChromaAt(base, y), ChromaAt(base + 1, y), f);
-    }
-    if (chromaMode == 2) {
-        float2 sum = 0;
-        float weightSum = 0;
-        [unroll] for (int i = -1; i <= 2; ++i) {
-            float w = CubicWeight((float)i - f);
-            sum += ChromaAt(base + i, y) * w;
-            weightSum += w;
-        }
-        return sum / max(weightSum, 1e-5);
+    float2 bilinear = lerp(ChromaAt(base, y), ChromaAt(base + 1, y), f);
+    if (mode == 1) return bilinear;
+    float2 bicubic = BicubicChroma(base, y, f);
+    if (mode == 2) return bicubic;
+
+    int x = (int)floor(sourceX + 0.5);
+    float2 edgeCandidate;
+    float confidence = EdgeConfidence(x, y, base, targetY, edgeCandidate);
+    if (mode == 4) {
+        // Explicit adaptive mode: fine/ambiguous detail falls back to bilinear.
+        return lerp(bilinear, edgeCandidate, confidence);
     }
 
-    // Fixed-cost joint bilateral support. Full-resolution luma discourages chroma
-    // interpolation across a strong brightness edge without introducing history.
-    float2 guidedSum = 0;
-    float guidedWeight = 0;
-    [unroll] for (int j = -1; j <= 2; ++j) {
-        int k = base + j;
-        float spatial = exp2(-1.35 * abs((float)k - c));
-        float lumaDifference = abs(targetY - PairLuma(k, y));
-        float guide = exp2(-28.0 * lumaDifference);
-        float w = spatial * (0.035 + guide);
-        guidedSum += ChromaAt(k, y) * w;
-        guidedWeight += w;
-    }
-    return guidedSum / max(guidedWeight, 1e-5);
+    // Conservative luma-guided mode: bicubic is used only as mild smooth-area support;
+    // a high-confidence isolated edge switches to almost-nearest chroma.
+    float2 smoothChroma = lerp(bilinear, bicubic, 0.25);
+    float hardEdge = smoothstep(0.45, 0.8, confidence);
+    float2 minimallyMixedEdge = lerp(edgeCandidate, bilinear, 0.08);
+    return lerp(smoothChroma, minimallyMixedEdge, hardEdge);
 }
 
 float3 ToRgb(float y, float2 uv) {
@@ -123,8 +151,13 @@ float4 PSMain(VsOut input) : SV_Target {
     float2 pixel = centered * sourceSize - 0.5;
     int2 ip = int2(clamp(floor(pixel + 0.5), 0.0, sourceSize - 1.0));
     float y = LumaAt(ip.x, ip.y);
-    float2 uv = ReconstructChroma(pixel.x, ip.y, y);
-    return float4(saturate(ToRgb(y, uv)), 1.0);
+    int activeMode = (splitScreen != 0 && input.uv.x < 0.5) ? 1 : chromaMode;
+    float2 uv = ReconstructChroma(pixel.x, ip.y, y, activeMode);
+    float3 rgb = saturate(ToRgb(y, uv));
+    if (splitScreen != 0 && abs(input.uv.x - 0.5) < 1.25 / outputSize.x) {
+        rgb = float3(0.85, 0.85, 0.85);
+    }
+    return float4(rgb, 1.0);
 }
 )hlsl";
 
@@ -132,10 +165,14 @@ struct alignas(16) ShaderSettings {
     float sourceSize[2];
     float outputSize[2];
     float chromaOffset;
+    float edgeThreshold;
     int chromaMode;
     int limitedRange;
-    float padding;
+    int splitScreen;
+    float padding[3];
 };
+
+static_assert(sizeof(ShaderSettings) == 48);
 
 ComPtr<ID3DBlob> Compile(const char* entry, const char* target) {
     UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
@@ -162,7 +199,8 @@ const wchar_t* ChromaModeName(ChromaMode mode) {
     case ChromaMode::Nearest: return L"Nearest";
     case ChromaMode::Bilinear: return L"Bilinear";
     case ChromaMode::Bicubic: return L"Bicubic Catmull-Rom";
-    case ChromaMode::LumaGuided: return L"Luma-guided";
+    case ChromaMode::LumaGuided: return L"Luma-guided conservative";
+    case ChromaMode::AdaptiveBlend: return L"Adaptive blend";
     }
     return L"Unknown";
 }
@@ -361,9 +399,11 @@ HRESULT Renderer::Render(const std::wstring& overlay) {
         settings->outputSize[0] = static_cast<float>(outputWidth_);
         settings->outputSize[1] = static_cast<float>(outputHeight_);
         settings->chromaOffset = chromaOffset_;
+        settings->edgeThreshold = edgeThreshold_;
         settings->chromaMode = static_cast<int>(chromaMode_);
         settings->limitedRange = limitedRange_ ? 1 : 0;
-        settings->padding = 0;
+        settings->splitScreen = splitScreen_ ? 1 : 0;
+        settings->padding[0] = settings->padding[1] = settings->padding[2] = 0;
         context_->Unmap(constants_.Get(), 0);
 
         context_->IASetInputLayout(nullptr);
@@ -410,4 +450,8 @@ void Renderer::DrawOverlay(const std::wstring& text) {
 
 void Renderer::SetChromaOffset(float value) {
     chromaOffset_ = std::clamp(value, -1.5f, 1.5f);
+}
+
+void Renderer::SetEdgeThreshold(float value) {
+    edgeThreshold_ = std::clamp(value, 0.01f, 0.20f);
 }

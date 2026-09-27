@@ -15,6 +15,7 @@ enum class ChromaMode : int {
     Bilinear = 1,
     Bicubic = 2,
     LumaGuided = 3,
+    AdaptiveBlend = 4,
 };
 
 class Renderer {
@@ -36,6 +37,10 @@ public:
     ChromaMode GetChromaMode() const { return chromaMode_; }
     void SetChromaOffset(float value);
     float ChromaOffset() const { return chromaOffset_; }
+    void SetEdgeThreshold(float value);
+    float EdgeThreshold() const { return edgeThreshold_; }
+    void SetSplitScreen(bool value) { splitScreen_ = value; }
+    bool SplitScreen() const { return splitScreen_; }
     HANDLE FrameLatencyEvent() const { return frameLatencyEvent_; }
     uint64_t PresentedFrames() const { return presentedFrames_; }
     double RenderFps() const { return renderFps_; }
@@ -78,8 +83,10 @@ private:
     bool tearingSupported_ = false;
     bool overlayEnabled_ = true;
     bool limitedRange_ = true;
-    ChromaMode chromaMode_ = ChromaMode::LumaGuided;
+    ChromaMode chromaMode_ = ChromaMode::AdaptiveBlend;
     float chromaOffset_ = 0.0f;
+    float edgeThreshold_ = 0.04f;
+    bool splitScreen_ = false;
     uint64_t presentedFrames_ = 0;
     double renderFps_ = 0.0;
     uint32_t fpsWindowFrames_ = 0;

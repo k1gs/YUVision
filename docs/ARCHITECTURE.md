@@ -45,10 +45,18 @@ the byte format does not carry a reliable per-device siting calibration.
 - Nearest: diagnostic baseline.
 - Bilinear: two neighboring 4:2:2 chroma samples.
 - Bicubic: four samples with a Catmull-Rom kernel.
-- Luma-guided: the same two primary candidates plus outer support. Spatial weights are multiplied
-  by an exponential weight derived from the difference between full-resolution target luma and
-  the candidate pair's luma. This avoids averaging strongly across many luma edges while keeping
-  cost fixed and temporal history at zero frames.
+- Conservative luma-guided: uses only the two chroma candidates surrounding the phase-corrected
+  sample position. A thresholded confidence test measures the primary luma gradient, competing
+  nearby gradients, candidate contrast and how clearly target luma matches one side. Only an
+  isolated, high-confidence edge switches to almost-nearest chroma; smooth areas use a restrained
+  bilinear/bicubic blend.
+- Adaptive blend: computes `lerp(bilinear, edge_candidate, confidence)`. Obvious isolated edges
+  retain the edge-selected chroma, while thin, textured or ambiguous detail falls back toward
+  bilinear. This is the default mode.
+
+`Edge threshold` is adjustable from 0.01 to 0.20 in normalized luma units. Split-screen evaluates
+the exact same frame with bilinear on the left and the selected reconstruction on the right, so
+mode and threshold changes can be assessed without temporal or scene differences.
 
 The method is intentionally conservative. Correlated luma/chroma edges are common in game UI,
 but luma is not a mathematical oracle for color; the live modes and offset control exist so the
