@@ -179,7 +179,7 @@ void App::RebuildMenu() {
                 L"Debug overlay\tO");
 
     HMENU chroma = CreatePopupMenu();
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < 6; ++i) {
         const auto mode = static_cast<ChromaMode>(i);
         AppendMenuW(chroma, MF_STRING | (renderer_.GetChromaMode() == mode ? MF_CHECKED : 0),
                     kChromaBase + i, ChromaModeName(mode));
@@ -283,7 +283,7 @@ void App::HandleCommand(UINT command) {
     } else if (command >= kModeBase && videoDeviceIndex_ < videoDevices_.size() &&
                command < kModeBase + videoDevices_[videoDeviceIndex_].modes.size()) {
         StartVideo(command - kModeBase);
-    } else if (command >= kChromaBase && command < kChromaBase + 5) {
+    } else if (command >= kChromaBase && command < kChromaBase + 6) {
         renderer_.SetChromaMode(static_cast<ChromaMode>(command - kChromaBase));
         RebuildMenu();
     } else if (command == kRangeLimited || command == kRangeFull) {
@@ -331,7 +331,8 @@ void App::HandleKey(UINT key, bool shift) {
     case '2': renderer_.SetChromaMode(ChromaMode::Bilinear); RebuildMenu(); break;
     case '3': renderer_.SetChromaMode(ChromaMode::Bicubic); RebuildMenu(); break;
     case '4': renderer_.SetChromaMode(ChromaMode::LumaGuided); RebuildMenu(); break;
-    case '5': renderer_.SetChromaMode(ChromaMode::AdaptiveBlend); RebuildMenu(); break;
+    case '5': renderer_.SetChromaMode(ChromaMode::Conservative); RebuildMenu(); break;
+    case '6': renderer_.SetChromaMode(ChromaMode::AdaptiveBlend); RebuildMenu(); break;
     case 'S': HandleCommand(kToggleSplit); break;
     case VK_DOWN:
         renderer_.SetEdgeThreshold(renderer_.EdgeThreshold() - (shift ? 0.025f : 0.01f));

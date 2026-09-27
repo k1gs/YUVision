@@ -48,6 +48,11 @@ float2 ChromaAt(int pairX, int y) {
     return p.ga;
 }
 
+float PairLuma(int pairX, int y) {
+    float4 p = Pair(pairX, y);
+    return 0.5 * (p.r + p.b);
+}
+
 float CubicWeight(float x) {
     x = abs(x);
     if (x < 1.0) return 1.5*x*x*x - 2.5*x*x + 1.0;
@@ -105,13 +110,29 @@ float2 ReconstructChroma(float sourceX, int y, float targetY, int mode) {
     float f = frac(c);
     float2 bilinear = lerp(ChromaAt(base, y), ChromaAt(base + 1, y), f);
     if (mode == 1) return bilinear;
-    float2 bicubic = BicubicChroma(base, y, f);
-    if (mode == 2) return bicubic;
+    if (mode == 2) return BicubicChroma(base, y, f);
 
+    if (mode == 3) {
+        // Original pre-adaptive algorithm retained exactly as the default quality mode.
+        float2 guidedSum = 0;
+        float guidedWeight = 0;
+        [unroll] for (int j = -1; j <= 2; ++j) {
+            int k = base + j;
+            float spatial = exp2(-1.35 * abs((float)k - c));
+            float lumaDifference = abs(targetY - PairLuma(k, y));
+            float guide = exp2(-28.0 * lumaDifference);
+            float w = spatial * (0.035 + guide);
+            guidedSum += ChromaAt(k, y) * w;
+            guidedWeight += w;
+        }
+        return guidedSum / max(guidedWeight, 1e-5);
+    }
+
+    float2 bicubic = BicubicChroma(base, y, f);
     int x = (int)floor(sourceX + 0.5);
     float2 edgeCandidate;
     float confidence = EdgeConfidence(x, y, base, targetY, edgeCandidate);
-    if (mode == 4) {
+    if (mode == 5) {
         // Explicit adaptive mode: fine/ambiguous detail falls back to bilinear.
         return lerp(bilinear, edgeCandidate, confidence);
     }
@@ -199,7 +220,8 @@ const wchar_t* ChromaModeName(ChromaMode mode) {
     case ChromaMode::Nearest: return L"Nearest";
     case ChromaMode::Bilinear: return L"Bilinear";
     case ChromaMode::Bicubic: return L"Bicubic Catmull-Rom";
-    case ChromaMode::LumaGuided: return L"Luma-guided conservative";
+    case ChromaMode::LumaGuided: return L"Luma-guided (original)";
+    case ChromaMode::Conservative: return L"Luma-guided conservative";
     case ChromaMode::AdaptiveBlend: return L"Adaptive blend";
     }
     return L"Unknown";

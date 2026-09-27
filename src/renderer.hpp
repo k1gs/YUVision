@@ -15,7 +15,8 @@ enum class ChromaMode : int {
     Bilinear = 1,
     Bicubic = 2,
     LumaGuided = 3,
-    AdaptiveBlend = 4,
+    Conservative = 4,
+    AdaptiveBlend = 5,
 };
 
 class Renderer {
@@ -83,7 +84,7 @@ private:
     bool tearingSupported_ = false;
     bool overlayEnabled_ = true;
     bool limitedRange_ = true;
-    ChromaMode chromaMode_ = ChromaMode::AdaptiveBlend;
+    ChromaMode chromaMode_ = ChromaMode::LumaGuided;
     float chromaOffset_ = 0.0f;
     float edgeThreshold_ = 0.04f;
     bool splitScreen_ = false;

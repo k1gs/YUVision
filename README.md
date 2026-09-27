@@ -20,8 +20,8 @@ No third-party runtime dependencies are used. A Windows 10/11 SDK is required.
 
 - `F11` / `Alt+Enter`: borderless fullscreen
 - `V`: VSync on/off (tearing is used when supported)
-- `1` / `2` / `3` / `4` / `5`: nearest / bilinear / bicubic / conservative luma-guided /
-  adaptive blend
+- `1` / `2` / `3` / `4` / `5` / `6`: nearest / bilinear / bicubic / original luma-guided /
+  conservative luma-guided / adaptive blend
 - `Left` / `Right`: chroma offset by 0.05 pixels
 - `Shift+Left` / `Shift+Right`: chroma offset by 0.25 pixels
 - `Down` / `Up`: edge threshold by 0.01 (`Shift`: 0.025)
@@ -44,6 +44,8 @@ blank client area. The same information and the native media-type list are writt
   unavoidable in this path. There is no CPU RGB conversion and no intermediate RGB texture.
 - The edge-aware modes are spatial-only reconstruction, not an AI upscaler. They cannot recreate
   chroma detail that the capture device never sampled.
+- Original pre-adaptive luma-guided is the default. Conservative and adaptive modes remain
+  opt-in experiments and do not replace it.
 - WASAPI uses a bounded audio ring. If the endpoints cannot both open as 48 kHz stereo float,
   audio reports an error instead of silently accepting an unknown format.
 - Manual audio sync offset and the `IAudioClient3` minimum-period path are deferred until the
