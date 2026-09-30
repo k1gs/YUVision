@@ -33,7 +33,18 @@ cmake -S . -B build -A x64
 cmake --build build --config Release
 ```
 
-The executable is `build\Release\YUVision.exe`. No third-party runtime libraries are required.
+The executable is `build\Release\YUVision.exe`. Release builds use the static MSVC runtime, so
+no separate Visual C++ Redistributable installation is required.
+
+Create the distributable ZIP from the CMake install manifest instead of archiving the EXE by
+hand:
+
+```powershell
+cpack --config build\CPackConfig.cmake -C Release
+```
+
+Standard Windows 10/11 editions include Media Foundation. Windows N editions additionally
+require Microsoft's Media Feature Pack.
 
 ## Controls
 
