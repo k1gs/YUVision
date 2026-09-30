@@ -38,7 +38,7 @@ target_link_libraries(yuvision PRIVATE
 # Release archives must be generated from this install manifest instead of
 # manually zipping a build-tree EXE.
 install(TARGETS yuvision RUNTIME DESTINATION .)
-install(FILES README.md DESTINATION .)
+install(FILES README.md LICENSE DESTINATION .)
 
 set(CPACK_GENERATOR ZIP)
 set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF)
