@@ -11,13 +11,13 @@ add_executable(yuvision WIN32
   src/resources/app.rc
   src/resources/resource.h
   src/app/main.cpp
-  src/audio/audio_loop.cpp
-  src/audio/audio_loop.hpp
-  src/capture/video_capture.cpp
-  src/capture/video_capture.hpp
-  src/common/common.hpp
-  src/render/renderer.cpp
-  src/render/renderer.hpp
+  src/engine/audio/audio_loop.cpp
+  src/engine/audio/audio_loop.hpp
+  src/engine/capture/video_capture.cpp
+  src/engine/capture/video_capture.hpp
+  src/engine/common/common.hpp
+  src/engine/render/renderer.cpp
+  src/engine/render/renderer.hpp
 )
 
 set_target_properties(yuvision PROPERTIES

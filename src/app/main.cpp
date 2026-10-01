@@ -1,6 +1,6 @@
-#include "audio/audio_loop.hpp"
-#include "capture/video_capture.hpp"
-#include "render/renderer.hpp"
+#include "engine/audio/audio_loop.hpp"
+#include "engine/capture/video_capture.hpp"
+#include "engine/render/renderer.hpp"
 #include "resources/resource.h"
 
 #include <mfapi.h>
