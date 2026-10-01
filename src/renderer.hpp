@@ -45,6 +45,7 @@ public:
     bool SplitScreen() const { return splitScreen_; }
     void SetDownscaleAa(bool value) { downscaleAa_ = value; }
     bool DownscaleAa() const { return downscaleAa_; }
+    void ShowVolumeOverlay(float volume, bool muted);
     HANDLE FrameLatencyEvent() const { return frameLatencyEvent_; }
     uint64_t PresentedFrames() const { return presentedFrames_; }
     double RenderFps() const { return renderFps_; }
@@ -56,6 +57,7 @@ private:
     void ReleaseSwapchainResources();
     void CreatePipeline();
     void DrawOverlay(const std::wstring& text);
+    void DrawVolumeOverlay();
 
     HWND window_ = nullptr;
     ComPtr<ID3D11Device> device_;
@@ -78,8 +80,10 @@ private:
     ComPtr<ID2D1Bitmap1> d2dTarget_;
     ComPtr<ID2D1SolidColorBrush> overlayBrush_;
     ComPtr<ID2D1SolidColorBrush> shadowBrush_;
+    ComPtr<ID2D1SolidColorBrush> volumeTrackBrush_;
     ComPtr<IDWriteFactory> writeFactory_;
     ComPtr<IDWriteTextFormat> textFormat_;
+    ComPtr<IDWriteTextFormat> volumeTextFormat_;
 
     HANDLE frameLatencyEvent_ = nullptr;
     UINT outputWidth_ = 1;
@@ -95,6 +99,9 @@ private:
     float edgeThreshold_ = 0.04f;
     bool splitScreen_ = false;
     bool downscaleAa_ = true;
+    float volumeOverlayLevel_ = 1.0f;
+    bool volumeOverlayMuted_ = false;
+    double volumeOverlayUntil_ = 0.0;
     uint64_t presentedFrames_ = 0;
     double renderFps_ = 0.0;
     uint32_t fpsWindowFrames_ = 0;

@@ -126,6 +126,7 @@ HRESULT AudioLoop::Start(const AudioEndpoint& input, const AudioEndpoint& output
         bufferedFrames_ = 0;
         droppedFrames_ = 0;
         underflowFrames_ = 0;
+        currentGain_ = muted_.load() ? 0.0f : volume_.load();
         {
             std::scoped_lock lock(errorMutex_);
             error_.clear();
@@ -173,6 +174,10 @@ AudioStats AudioLoop::Stats() const {
         stats.error = error_;
     }
     return stats;
+}
+
+void AudioLoop::SetVolume(float value) {
+    volume_ = std::clamp(value, 0.0f, 1.0f);
 }
 
 void AudioLoop::ThreadMain() {
@@ -254,11 +259,18 @@ void AudioLoop::FillRender() {
     }
     float* destination = reinterpret_cast<float*>(raw);
     uint32_t buffered = bufferedFrames_.load();
+    const float targetGain = muted_.load() ? 0.0f : volume_.load();
+    constexpr UINT32 kGainRampFrames = 240; // 5 ms at 48 kHz; no buffering added.
+    const UINT32 rampFrames = std::min(requested, kGainRampFrames);
+    const float gainStep = rampFrames > 0
+        ? (targetGain - currentGain_) / static_cast<float>(rampFrames)
+        : 0.0f;
     for (UINT32 frame = 0; frame < requested; ++frame) {
+        if (frame < rampFrames) currentGain_ += gainStep;
         if (buffered > 0) {
             for (uint32_t channel = 0; channel < kChannels; ++channel) {
                 destination[static_cast<size_t>(frame) * kChannels + channel] =
-                    ring_[static_cast<size_t>(readFrame_) * kChannels + channel];
+                    ring_[static_cast<size_t>(readFrame_) * kChannels + channel] * currentGain_;
             }
             readFrame_ = (readFrame_ + 1) % kRingFrames;
             --buffered;
@@ -268,6 +280,7 @@ void AudioLoop::FillRender() {
             underflowFrames_.fetch_add(1);
         }
     }
+    currentGain_ = targetGain;
     bufferedFrames_ = buffered;
     renderService_->ReleaseBuffer(requested, 0);
 }
