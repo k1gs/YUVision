@@ -33,6 +33,30 @@ cmake -S . -B build -A x64
 cmake --build build --config Release
 ```
 
+## Build the MSI installer
+
+The MSI build is intentionally opt-in. Double-click the one-step build script:
+
+```text
+build-release.cmd
+```
+
+It downloads a pinned, repository-local copy of WiX 4.0.4, builds the release executable with
+the static MSVC runtime, verifies that no dynamic MSVC runtime DLLs slipped into the build, and
+creates the MSI test bundle. The underlying PowerShell entry point can also be run directly:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build-msi.ps1
+```
+
+The bundle is written to `out\msi\YUVision-v<version>-installer`. Run
+`Install-YUVision.cmd` when you want a verbose installation log next to the installer. The MSI
+itself can also be opened directly. Runtime logs are stored in
+`%LOCALAPPDATA%\YUVision\Logs` and can be opened from YUVision's **Open logs** menu item.
+
+Prerequisites for building the installer are Visual Studio 2022 Build Tools with the Windows SDK,
+CMake 3.30 or newer, the .NET 10 SDK, and internet access for the first WiX restore.
+
 The executable is `build\Release\YUVision.exe`. Release builds use the static MSVC runtime, so
 no separate Visual C++ Redistributable installation is required.
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <windows.h>
+#include <shlobj.h>
 #include <wrl/client.h>
 
 #include <chrono>
@@ -46,11 +47,32 @@ inline double QpcSeconds(int64_t ticks) {
     return static_cast<double>(ticks) / frequency;
 }
 
+inline std::wstring DiagnosticLogDirectory() {
+    PWSTR localAppData = nullptr;
+    std::wstring directory;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, KF_FLAG_CREATE, nullptr,
+                                       &localAppData)) && localAppData) {
+        directory = std::wstring(localAppData) + L"\\YUVision";
+        CoTaskMemFree(localAppData);
+        CreateDirectoryW(directory.c_str(), nullptr);
+        directory += L"\\Logs";
+        CreateDirectoryW(directory.c_str(), nullptr);
+        return directory;
+    }
+    if (localAppData) CoTaskMemFree(localAppData);
+
+    wchar_t temporary[MAX_PATH]{};
+    const DWORD length = GetTempPathW(static_cast<DWORD>(std::size(temporary)), temporary);
+    if (length == 0 || length >= std::size(temporary)) return L".";
+    return std::wstring(temporary, length);
+}
+
 inline std::wstring DiagnosticLogPath() {
-    wchar_t directory[MAX_PATH]{};
-    const DWORD length = GetTempPathW(static_cast<DWORD>(std::size(directory)), directory);
-    if (length == 0 || length >= std::size(directory)) return L"YUVision.log";
-    return std::wstring(directory, length) + L"YUVision.log";
+    return DiagnosticLogDirectory() + L"\\YUVision.log";
+}
+
+inline std::wstring PreviousDiagnosticLogPath() {
+    return DiagnosticLogDirectory() + L"\\YUVision.previous.log";
 }
 
 inline std::string Utf8(const std::wstring& text) {
@@ -64,7 +86,10 @@ inline std::string Utf8(const std::wstring& text) {
 }
 
 inline void ResetDiagnosticLog() {
-    DeleteFileW(DiagnosticLogPath().c_str());
+    const std::wstring current = DiagnosticLogPath();
+    const std::wstring previous = PreviousDiagnosticLogPath();
+    DeleteFileW(previous.c_str());
+    MoveFileExW(current.c_str(), previous.c_str(), MOVEFILE_REPLACE_EXISTING);
 }
 
 inline void DiagnosticLog(const std::wstring& message) {
