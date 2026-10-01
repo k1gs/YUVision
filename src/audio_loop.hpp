@@ -33,6 +33,10 @@ public:
     HRESULT Start(const AudioEndpoint& input, const AudioEndpoint& output);
     void Stop();
     AudioStats Stats() const;
+    void SetVolume(float value);
+    float Volume() const { return volume_.load(); }
+    void SetMuted(bool value) { muted_ = value; }
+    bool Muted() const { return muted_.load(); }
 
 private:
     static std::vector<AudioEndpoint> Enumerate(EDataFlow flow);
@@ -60,6 +64,9 @@ private:
     std::atomic<uint32_t> bufferedFrames_{0};
     std::atomic<uint64_t> droppedFrames_{0};
     std::atomic<uint64_t> underflowFrames_{0};
+    std::atomic<float> volume_{1.0f};
+    std::atomic<bool> muted_{false};
+    float currentGain_ = 1.0f; // Audio-thread owned; ramped to the atomic target gain.
     UINT32 renderBufferFrames_ = 0;
 
     mutable std::mutex errorMutex_;

@@ -21,7 +21,7 @@ only the newest frame, so slow rendering drops old frames instead of increasing 
 - Manual chroma offset and Limited / Full range selection
 - Native-resolution GPU conversion followed by sharp bicubic window scaling
 - Borderless fullscreen, VSync toggle, and tearing when supported
-- Low-latency 48 kHz WASAPI audio
+- Low-latency 48 kHz WASAPI audio with app-local volume and mute
 - Capture, render, drop, queue, timestamp, format, and audio diagnostics
 
 ## Build
@@ -57,7 +57,9 @@ require Microsoft's Media Feature Pack.
 - `S`: split screen, bilinear on the left and selected mode on the right
 - `R`: Limited / Full input range
 - `O`: debug overlay
-- Menu or right click: select capture mode and audio devices
+- `+` / `-`, mouse wheel, or media volume keys: adjust YUVision audio volume
+- `M`: mute or unmute YUVision audio
+- Menu or right click: select capture mode, audio devices, and volume
 
 YUY2 is currently the implemented video path. NV12 and XRGB native modes may be listed by the
 device, but remain disabled. The diagnostic log is written to `%TEMP%\YUVision.log`.

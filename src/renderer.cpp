@@ -359,6 +359,13 @@ void Renderer::Initialize(HWND window) {
                                              DWRITE_FONT_STRETCH_NORMAL, 15.0f, L"en-us",
                                              &textFormat_), "CreateTextFormat");
     textFormat_->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+    CheckHr(writeFactory_->CreateTextFormat(L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_SEMI_BOLD,
+                                             DWRITE_FONT_STYLE_NORMAL,
+                                             DWRITE_FONT_STRETCH_NORMAL, 22.0f, L"en-us",
+                                             &volumeTextFormat_), "CreateTextFormat(volume)");
+    volumeTextFormat_->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+    volumeTextFormat_->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+    volumeTextFormat_->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
 
     CreatePipeline();
     CreateSwapchainResources();
@@ -406,12 +413,16 @@ void Renderer::CreateSwapchainResources() {
             "Create overlay brush");
     CheckHr(d2dContext_->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 0.72f), &shadowBrush_),
             "Create shadow brush");
+    CheckHr(d2dContext_->CreateSolidColorBrush(D2D1::ColorF(1, 1, 1, 0.28f),
+                                               &volumeTrackBrush_),
+            "Create volume track brush");
 }
 
 void Renderer::ReleaseSwapchainResources() {
     d2dContext_->SetTarget(nullptr);
     overlayBrush_.Reset();
     shadowBrush_.Reset();
+    volumeTrackBrush_.Reset();
     d2dTarget_.Reset();
     renderTarget_.Reset();
     context_->Flush();
@@ -562,6 +573,7 @@ HRESULT Renderer::Render(const std::wstring& overlay) {
     }
 
     if (overlayEnabled_) DrawOverlay(overlay);
+    if (QpcSeconds(QpcNow()) < volumeOverlayUntil_) DrawVolumeOverlay();
     const UINT flags = (!vsync_ && tearingSupported_) ? DXGI_PRESENT_ALLOW_TEARING : 0;
     const HRESULT hr = swapchain_->Present(vsync_ ? 1 : 0, flags);
     if (SUCCEEDED(hr)) {
@@ -592,6 +604,47 @@ void Renderer::DrawOverlay(const std::wstring& text) {
         // Resize/recreation will rebuild it on the next window-size event.
         d2dTarget_.Reset();
     }
+}
+
+void Renderer::ShowVolumeOverlay(float volume, bool muted) {
+    volumeOverlayLevel_ = std::clamp(volume, 0.0f, 1.0f);
+    volumeOverlayMuted_ = muted;
+    volumeOverlayUntil_ = QpcSeconds(QpcNow()) + 1.5;
+}
+
+void Renderer::DrawVolumeOverlay() {
+    const float panelWidth = std::min(360.0f, std::max(240.0f, outputWidth_ * 0.32f));
+    constexpr float panelHeight = 94.0f;
+    const float left = (static_cast<float>(outputWidth_) - panelWidth) * 0.5f;
+    const float top = static_cast<float>(outputHeight_) * 0.76f - panelHeight * 0.5f;
+    const auto panel = D2D1::RoundedRect(
+        D2D1::RectF(left, top, left + panelWidth, top + panelHeight), 12.0f, 12.0f);
+    const float trackLeft = left + 24.0f;
+    const float trackRight = left + panelWidth - 24.0f;
+    const auto track = D2D1::RoundedRect(
+        D2D1::RectF(trackLeft, top + 65.0f, trackRight, top + 75.0f), 5.0f, 5.0f);
+    const float displayedLevel = volumeOverlayMuted_ ? 0.0f : volumeOverlayLevel_;
+    const auto fill = D2D1::RoundedRect(
+        D2D1::RectF(trackLeft, top + 65.0f,
+                    trackLeft + (trackRight - trackLeft) * displayedLevel, top + 75.0f),
+        5.0f, 5.0f);
+
+    const int percentage = static_cast<int>(volumeOverlayLevel_ * 100.0f + 0.5f);
+    const std::wstring label = volumeOverlayMuted_
+        ? L"Muted"
+        : L"Volume  " + std::to_wstring(percentage) + L"%";
+
+    d2dContext_->BeginDraw();
+    d2dContext_->FillRoundedRectangle(panel, shadowBrush_.Get());
+    d2dContext_->DrawTextW(label.c_str(), static_cast<UINT32>(label.size()),
+                           volumeTextFormat_.Get(),
+                           D2D1::RectF(left + 12.0f, top + 10.0f,
+                                       left + panelWidth - 12.0f, top + 57.0f),
+                           overlayBrush_.Get(), D2D1_DRAW_TEXT_OPTIONS_CLIP);
+    d2dContext_->FillRoundedRectangle(track, volumeTrackBrush_.Get());
+    if (displayedLevel > 0.0f) d2dContext_->FillRoundedRectangle(fill, overlayBrush_.Get());
+    const HRESULT hr = d2dContext_->EndDraw();
+    if (hr == D2DERR_RECREATE_TARGET) d2dTarget_.Reset();
 }
 
 void Renderer::SetChromaOffset(float value) {

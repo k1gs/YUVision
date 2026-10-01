@@ -29,6 +29,9 @@ constexpr UINT kToggleSplit = 3050;
 constexpr UINT kToggleDownscaleAa = 3051;
 constexpr UINT kAudioInputBase = 4000;
 constexpr UINT kAudioOutputBase = 5000;
+constexpr UINT kAudioVolumeDown = 6000;
+constexpr UINT kAudioVolumeUp = 6001;
+constexpr UINT kAudioMute = 6002;
 
 std::wstring Lower(std::wstring value) {
     std::transform(value.begin(), value.end(), value.begin(),
@@ -62,6 +65,8 @@ private:
     void StartBestVideo();
     void StartVideo(size_t modeIndex);
     void StartAudio();
+    void AdjustAudioVolume(float delta);
+    void ToggleAudioMute();
     void HandleCommand(UINT command);
     void HandleKey(UINT key, bool shift);
     void ToggleFullscreen();
@@ -83,6 +88,7 @@ private:
     size_t audioOutputIndex_ = 0;
     bool rendererReady_ = false;
     bool fullscreen_ = false;
+    int wheelDeltaRemainder_ = 0;
     WINDOWPLACEMENT windowPlacement_{sizeof(WINDOWPLACEMENT)};
     DWORD windowStyle_ = 0;
     std::wstring currentFormat_ = L"No signal";
@@ -229,6 +235,14 @@ HMENU App::BuildMenu(bool popupRoot) const {
     }
     AppendMenuW(audio, MF_POPUP, reinterpret_cast<UINT_PTR>(inputs), L"HDMI input");
     AppendMenuW(audio, MF_POPUP, reinterpret_cast<UINT_PTR>(outputs), L"Output");
+    AppendMenuW(audio, MF_SEPARATOR, 0, nullptr);
+    const int volumePercent = static_cast<int>(audio_.Volume() * 100.0f + 0.5f);
+    const std::wstring volumeLabel = L"Volume: " + std::to_wstring(volumePercent) + L"%";
+    AppendMenuW(audio, MF_STRING | MF_GRAYED, 0, volumeLabel.c_str());
+    AppendMenuW(audio, MF_STRING, kAudioVolumeUp, L"Volume up\t+");
+    AppendMenuW(audio, MF_STRING, kAudioVolumeDown, L"Volume down\t-");
+    AppendMenuW(audio, MF_STRING | (audio_.Muted() ? MF_CHECKED : 0), kAudioMute,
+                L"Mute\tM");
 
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(video), L"Video");
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(chroma), L"Chroma");
@@ -308,6 +322,19 @@ void App::StartAudio() {
     }
 }
 
+void App::AdjustAudioVolume(float delta) {
+    audio_.SetVolume(audio_.Volume() + delta);
+    if (audio_.Muted() && delta > 0.0f) audio_.SetMuted(false);
+    renderer_.ShowVolumeOverlay(audio_.Volume(), audio_.Muted());
+    RebuildMenu();
+}
+
+void App::ToggleAudioMute() {
+    audio_.SetMuted(!audio_.Muted());
+    renderer_.ShowVolumeOverlay(audio_.Volume(), audio_.Muted());
+    RebuildMenu();
+}
+
 void App::HandleCommand(UINT command) {
     if (command >= kDeviceBase && command < kDeviceBase + videoDevices_.size()) {
         videoDeviceIndex_ = command - kDeviceBase;
@@ -350,6 +377,12 @@ void App::HandleCommand(UINT command) {
         audioOutputIndex_ = command - kAudioOutputBase;
         StartAudio();
         RebuildMenu();
+    } else if (command == kAudioVolumeDown) {
+        AdjustAudioVolume(-0.05f);
+    } else if (command == kAudioVolumeUp) {
+        AdjustAudioVolume(0.05f);
+    } else if (command == kAudioMute) {
+        ToggleAudioMute();
     }
 }
 
@@ -370,6 +403,14 @@ void App::HandleKey(UINT key, bool shift) {
     case '5': renderer_.SetChromaMode(ChromaMode::Conservative); RebuildMenu(); break;
     case '6': renderer_.SetChromaMode(ChromaMode::AdaptiveBlend); RebuildMenu(); break;
     case 'S': HandleCommand(kToggleSplit); break;
+    case 'M':
+    case VK_VOLUME_MUTE: ToggleAudioMute(); break;
+    case VK_OEM_PLUS:
+    case VK_ADD:
+    case VK_VOLUME_UP: AdjustAudioVolume(0.05f); break;
+    case VK_OEM_MINUS:
+    case VK_SUBTRACT:
+    case VK_VOLUME_DOWN: AdjustAudioVolume(-0.05f); break;
     case VK_DOWN:
         renderer_.SetEdgeThreshold(renderer_.EdgeThreshold() - (shift ? 0.025f : 0.01f));
         RebuildMenu();
@@ -440,6 +481,8 @@ std::wstring App::OverlayText(const CapturedFrame* frame) const {
         << L"   Sharp scale " << (renderer_.DownscaleAa() ? L"On" : L"Off")
         << L"   Tearing " << (renderer_.TearingSupported() ? L"available" : L"unavailable")
         << L"   Audio " << (audioStats.running ? L"48 kHz" : L"off")
+        << L"   volume " << static_cast<int>(audio_.Volume() * 100.0f + 0.5f) << L"%"
+        << (audio_.Muted() ? L" muted" : L"")
         << L"   audio queue " << audioStats.bufferedFrames << L" frames";
     if (!audioStats.error.empty()) out << L"\nAudio error: " << audioStats.error;
     out << L"\nLog: " << DiagnosticLogPath();
@@ -462,6 +505,21 @@ LRESULT App::WindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
             TrackPopupMenu(contextMenu_, TPM_RIGHTBUTTON, point.x, point.y, 0, window_, nullptr);
         }
         return 0;
+    case WM_MOUSEWHEEL: {
+        wheelDeltaRemainder_ += GET_WHEEL_DELTA_WPARAM(wparam);
+        const int steps = wheelDeltaRemainder_ / WHEEL_DELTA;
+        wheelDeltaRemainder_ %= WHEEL_DELTA;
+        if (steps != 0) AdjustAudioVolume(static_cast<float>(steps) * 0.05f);
+        return 0;
+    }
+    case WM_APPCOMMAND:
+        switch (GET_APPCOMMAND_LPARAM(lparam)) {
+        case APPCOMMAND_VOLUME_MUTE: ToggleAudioMute(); return TRUE;
+        case APPCOMMAND_VOLUME_UP: AdjustAudioVolume(0.05f); return TRUE;
+        case APPCOMMAND_VOLUME_DOWN: AdjustAudioVolume(-0.05f); return TRUE;
+        default: break;
+        }
+        break;
     case WM_SIZE:
         if (rendererReady_ && wparam != SIZE_MINIMIZED) {
             try {
