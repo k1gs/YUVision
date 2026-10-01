@@ -24,6 +24,15 @@ only the newest frame, so slow rendering drops old frames instead of increasing 
 - Low-latency 48 kHz WASAPI audio with app-local volume and mute
 - Capture, render, drop, queue, timestamp, format, and audio diagnostics
 
+## Audio controls
+
+YUVision adjusts only its own HDMI monitoring stream and does not change the Windows master
+volume. Use `+` / `-`, the mouse wheel, or media volume keys to change the level; press `M` to
+mute. A short on-video indicator shows the current state. Gain changes use a 5 ms ramp to avoid
+clicks without adding another audio buffer.
+
+![YUVision audio volume overlay](assets/demos/audio-volume-overlay.gif)
+
 ## Build
 
 Requirements: Windows 10/11 x64, Visual Studio 2022, and a Windows SDK.
@@ -86,7 +95,8 @@ require Microsoft's Media Feature Pack.
 - Menu or right click: select capture mode, audio devices, and volume
 
 YUY2 is currently the implemented video path. NV12 and XRGB native modes may be listed by the
-device, but remain disabled. The diagnostic log is written to `%TEMP%\YUVision.log`.
+device, but remain disabled. Diagnostic logs are stored in
+`%LOCALAPPDATA%\YUVision\Logs`.
 
 Technical details are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 [docs/RESEARCH.md](docs/RESEARCH.md).

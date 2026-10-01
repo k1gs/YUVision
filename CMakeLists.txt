@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(YUVision VERSION 0.1.1 LANGUAGES CXX)
+project(YUVision VERSION 0.2.0 LANGUAGES CXX)
 
 option(YUVISION_ENABLE_MSI "Enable the WiX MSI package generator" OFF)
 
