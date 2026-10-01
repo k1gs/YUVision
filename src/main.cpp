@@ -4,6 +4,7 @@
 #include "video_capture.hpp"
 
 #include <mfapi.h>
+#include <shellapi.h>
 #include <shellscalingapi.h>
 #include <windowsx.h>
 
@@ -29,6 +30,7 @@ constexpr UINT kToggleSplit = 3050;
 constexpr UINT kToggleDownscaleAa = 3051;
 constexpr UINT kAudioInputBase = 4000;
 constexpr UINT kAudioOutputBase = 5000;
+constexpr UINT kOpenLogFolder = 6000;
 
 std::wstring Lower(std::wstring value) {
     std::transform(value.begin(), value.end(), value.begin(),
@@ -234,6 +236,7 @@ HMENU App::BuildMenu(bool popupRoot) const {
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(chroma), L"Chroma");
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(range), L"Range");
     AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(audio), L"Audio");
+    AppendMenuW(menu, MF_STRING, kOpenLogFolder, L"Open logs");
     return menu;
 }
 
@@ -350,6 +353,14 @@ void App::HandleCommand(UINT command) {
         audioOutputIndex_ = command - kAudioOutputBase;
         StartAudio();
         RebuildMenu();
+    } else if (command == kOpenLogFolder) {
+        const auto directory = DiagnosticLogDirectory();
+        const auto result = reinterpret_cast<INT_PTR>(
+            ShellExecuteW(window_, L"open", directory.c_str(), nullptr, nullptr, SW_SHOWNORMAL));
+        if (result <= 32) {
+            MessageBoxW(window_, L"Could not open the YUVision log folder.", L"YUVision logs",
+                        MB_OK | MB_ICONWARNING);
+        }
     }
 }
 
