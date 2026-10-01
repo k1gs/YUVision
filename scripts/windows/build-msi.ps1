@@ -6,7 +6,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$repo = Split-Path -Parent $PSScriptRoot
+$repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
 if (-not $BuildDirectory) { $BuildDirectory = Join-Path $repo "build-msi" }
 if (-not $OutputDirectory) { $OutputDirectory = Join-Path $repo "out\msi" }
 $BuildDirectory = [IO.Path]::GetFullPath($BuildDirectory)
@@ -72,10 +72,10 @@ if (-not (Test-Path $msi)) { throw "Expected MSI was not created: $msi" }
 if (Test-Path $bundleDirectory) { Remove-Item -LiteralPath $bundleDirectory -Recurse -Force }
 New-Item -ItemType Directory -Force (Join-Path $bundleDirectory "logs") | Out-Null
 Copy-Item $msi $bundleDirectory
-Copy-Item (Join-Path $repo "packaging\Install-YUVision.cmd") $bundleDirectory
-Copy-Item (Join-Path $repo "packaging\Uninstall-YUVision.cmd") $bundleDirectory
-Copy-Item (Join-Path $repo "packaging\README-INSTALLER.txt") $bundleDirectory
-Copy-Item (Join-Path $repo "packaging\logs\README.txt") (Join-Path $bundleDirectory "logs")
+Copy-Item (Join-Path $repo "packaging\windows\Install-YUVision.cmd") $bundleDirectory
+Copy-Item (Join-Path $repo "packaging\windows\Uninstall-YUVision.cmd") $bundleDirectory
+Copy-Item (Join-Path $repo "packaging\windows\README-INSTALLER.txt") $bundleDirectory
+Copy-Item (Join-Path $repo "packaging\windows\logs\README.txt") (Join-Path $bundleDirectory "logs")
 Copy-Item (Join-Path $repo "README.md") $bundleDirectory
 Copy-Item (Join-Path $repo "LICENSE") $bundleDirectory
 

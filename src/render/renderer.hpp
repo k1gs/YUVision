@@ -1,7 +1,7 @@
 #pragma once
 
-#include "common.hpp"
-#include "video_capture.hpp"
+#include "capture/video_capture.hpp"
+#include "common/common.hpp"
 
 #include <d2d1_1.h>
 #include <d3d11.h>

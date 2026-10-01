@@ -8,16 +8,16 @@ if(NOT WIN32)
 endif()
 
 add_executable(yuvision WIN32
-  src/app.rc
-  src/main.cpp
-  src/video_capture.cpp
-  src/video_capture.hpp
-  src/renderer.cpp
-  src/renderer.hpp
-  src/audio_loop.cpp
-  src/audio_loop.hpp
-  src/common.hpp
-  src/resource.h
+  src/resources/app.rc
+  src/resources/resource.h
+  src/app/main.cpp
+  src/audio/audio_loop.cpp
+  src/audio/audio_loop.hpp
+  src/capture/video_capture.cpp
+  src/capture/video_capture.hpp
+  src/common/common.hpp
+  src/render/renderer.cpp
+  src/render/renderer.hpp
 )
 
 set_target_properties(yuvision PROPERTIES
@@ -28,6 +28,7 @@ set_target_properties(yuvision PROPERTIES
 )
 
 target_compile_features(yuvision PRIVATE cxx_std_20)
+target_include_directories(yuvision PRIVATE src)
 target_compile_definitions(yuvision PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
 target_compile_options(yuvision PRIVATE /W4 /permissive- /EHsc /utf-8)
 target_link_libraries(yuvision PRIVATE
@@ -57,7 +58,7 @@ if(YUVISION_ENABLE_MSI)
   set(CPACK_WIX_ARCHITECTURE x64)
   set(CPACK_WIX_INSTALL_SCOPE perMachine)
   set(CPACK_WIX_UPGRADE_GUID "8495238D-8BA6-49BB-BBB9-FCD84F4F657C")
-  set(CPACK_WIX_PRODUCT_ICON "${CMAKE_CURRENT_SOURCE_DIR}/favicon.ico")
+  set(CPACK_WIX_PRODUCT_ICON "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/YUVision.ico")
   set(CPACK_WIX_PROGRAM_MENU_FOLDER "YUVision")
   set(CPACK_PACKAGE_EXECUTABLES "YUVision" "YUVision")
 endif()

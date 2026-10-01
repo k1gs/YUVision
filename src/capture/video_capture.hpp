@@ -1,6 +1,6 @@
 #pragma once
 
-#include "common.hpp"
+#include "common/common.hpp"
 
 #include <mfapi.h>
 #include <mfidl.h>

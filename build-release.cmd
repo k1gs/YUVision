@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 
 echo Building YUVision Release executable and MSI installer...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\build-msi.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\windows\build-msi.ps1"
 set "RESULT=%ERRORLEVEL%"
 
 if not "%RESULT%"=="0" (

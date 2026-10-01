@@ -1,7 +1,7 @@
-#include "audio_loop.hpp"
-#include "renderer.hpp"
-#include "resource.h"
-#include "video_capture.hpp"
+#include "audio/audio_loop.hpp"
+#include "capture/video_capture.hpp"
+#include "render/renderer.hpp"
+#include "resources/resource.h"
 
 #include <mfapi.h>
 #include <shellapi.h>

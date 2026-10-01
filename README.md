@@ -6,13 +6,13 @@ YUVision is a low-latency Windows viewer for USB HDMI capture cards. It is built
 The app reconstructs 4:2:2 chroma and converts Rec.709 YUY2 to RGB in a D3D11 shader. It keeps
 only the newest frame, so slow rendering drops old frames instead of increasing latency.
 
-![YUY2 chroma reconstruction comparison](Compare.png)
+![YUY2 chroma reconstruction comparison](assets/comparisons/chroma-reconstruction.png)
 
 ### More comparisons
 
-![Game UI chroma comparison](game_cmp.png)
+![Game UI chroma comparison](assets/comparisons/game-ui-comparison.png)
 
-![Red and yellow UI comparison](hs_cmp.png)
+![Red and yellow UI comparison](assets/comparisons/red-yellow-ui-comparison.png)
 
 ## Features
 
@@ -46,7 +46,7 @@ the static MSVC runtime, verifies that no dynamic MSVC runtime DLLs slipped into
 creates the MSI test bundle. The underlying PowerShell entry point can also be run directly:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\build-msi.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\build-msi.ps1
 ```
 
 The bundle is written to `out\msi\YUVision-v<version>-installer`. Run
